@@ -20,7 +20,7 @@ const WORLD_W = 3500;
 const WORLD_H = 2000;
 
 const HOME_VIEWPORT = { x: 0, y: 0, scale: 1.0 };
-const PAN_SPEED = 0.45;
+const DRAG_THRESHOLD = 5; // pixels before a press is considered a drag
 
 // Prefer geo centroid; fall back to scaling old-format coords to new canvas.
 function getCenter(t: Territory): [number, number] {
@@ -34,18 +34,30 @@ export function Board(props: BoardProps) {
   const svgRef = useRef<SVGSVGElement>(null);
 
   const [viewport, setViewport] = useState({ ...HOME_VIEWPORT });
-  const [drag, setDrag] = useState<{ ox: number; oy: number; x: number; y: number } | null>(null);
+  const [drag, setDrag] = useState<{ ox: number; oy: number; vx: number; vy: number } | null>(null);
+  // Tracks whether the current press became a drag; read in territory onClick to suppress selection.
+  const didDragRef = useRef(false);
 
-  function onPointerDown(e: React.PointerEvent) {
-    if ((e.target as Element).closest("[data-territory]") || (e.target as Element).closest("[data-stack]")) return;
-    (e.currentTarget as Element).setPointerCapture(e.pointerId);
-    setDrag({ ox: e.clientX, oy: e.clientY, x: viewport.x, y: viewport.y });
+  function onPointerDown(e: React.PointerEvent<SVGSVGElement>) {
+    (e.currentTarget as SVGSVGElement).setPointerCapture(e.pointerId);
+    didDragRef.current = false;
+    setDrag({ ox: e.clientX, oy: e.clientY, vx: viewport.x, vy: viewport.y });
   }
   function onPointerMove(e: React.PointerEvent) {
     if (!drag) return;
-    const dx = ((e.clientX - drag.ox) * PAN_SPEED) / viewport.scale;
-    const dy = ((e.clientY - drag.oy) * PAN_SPEED) / viewport.scale;
-    setViewport({ ...viewport, x: drag.x - dx, y: drag.y - dy });
+    const dx = e.clientX - drag.ox;
+    const dy = e.clientY - drag.oy;
+    if (!didDragRef.current && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+    didDragRef.current = true;
+    // Convert screen-pixel delta to SVG-unit delta.
+    // renderScale = min(containerW * scale / WORLD_W, containerH * scale / WORLD_H)
+    // accounts for preserveAspectRatio letterboxing.
+    const rect = svgRef.current!.getBoundingClientRect();
+    const renderScale = Math.min(
+      rect.width  * viewport.scale / WORLD_W,
+      rect.height * viewport.scale / WORLD_H,
+    );
+    setViewport(vp => ({ scale: vp.scale, x: drag.vx - dx / renderScale, y: drag.vy - dy / renderScale }));
   }
   function onPointerUp() { setDrag(null); }
 
@@ -166,7 +178,7 @@ export function Board(props: BoardProps) {
           if (!geo) return null;
           return (
             <g key={t.id} data-territory={t.id}
-               onClick={(e) => { e.stopPropagation(); onTerritoryClick(t.id); }}
+               onClick={(e) => { e.stopPropagation(); if (!didDragRef.current) onTerritoryClick(t.id); }}
                style={{ cursor: "pointer" }}>
               {geo.polygons.map((pts, idx) => (
                 <polygon
@@ -193,7 +205,7 @@ export function Board(props: BoardProps) {
 
           return (
             <g key={t.id} data-territory={t.id}
-               onClick={(e) => { e.stopPropagation(); onTerritoryClick(t.id); }}
+               onClick={(e) => { e.stopPropagation(); if (!didDragRef.current) onTerritoryClick(t.id); }}
                style={{ cursor: "pointer" }}>
 
               {geo ? (
