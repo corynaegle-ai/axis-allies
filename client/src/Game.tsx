@@ -38,6 +38,43 @@ export function Game({ net, gameId, state, myPower, authUser, error, notice, las
   }, []);
 
   const reachable = useMemo<Set<string>>(() => {
+    // During place phase: highlight territories where units can be deployed
+    if (state.phase === "place" && myPower === state.activePower) {
+      const pool = state.powers[myPower]?.producedThisTurn ?? [];
+      if (pool.length === 0) return new Set();
+
+      const hasSea = pool.some((o) => UNITS[o.unit]?.domain === "sea");
+      const hasLand = pool.some((o) => {
+        const d = UNITS[o.unit]?.domain;
+        return d === "land" || d === "air";
+      });
+
+      const out = new Set<string>();
+
+      // Find all land territories owned by this power that have a factory
+      const factoryTerritories = Object.values(state.units)
+        .filter((u) => u.unit === "factory" && u.owner === myPower)
+        .map((u) => u.territory);
+
+      if (hasLand) {
+        for (const tid of factoryTerritories) {
+          if (state.territories[tid]?.owner === myPower) out.add(tid);
+        }
+      }
+
+      if (hasSea) {
+        // Sea zones adjacent to any factory territory
+        for (const tid of factoryTerritories) {
+          if (state.territories[tid]?.owner !== myPower) continue;
+          for (const n of TERRITORY_MAP[tid]?.neighbors ?? []) {
+            if (TERRITORY_MAP[n]?.terrain === "sea") out.add(n);
+          }
+        }
+      }
+
+      return out;
+    }
+
     if (!moveSrc) return new Set();
     const src = TERRITORY_MAP[moveSrc];
     if (!src) return new Set();
@@ -67,7 +104,16 @@ export function Game({ net, gameId, state, myPower, authUser, error, notice, las
       }
     }
     return out;
-  }, [moveSrc, moveUnits, state.units]);
+  }, [moveSrc, moveUnits, state.units, state.phase, state.activePower, myPower, state.powers, state.territories]);
+
+  // During place phase, auto-select the only valid territory if there's exactly one
+  useEffect(() => {
+    if (state.phase === "place" && myPower === state.activePower) {
+      if (reachable.size === 1) {
+        setSelected([...reachable][0]);
+      }
+    }
+  }, [state.phase, state.activePower, myPower, reachable]);
 
   function onRetreatRequest(battleTerritory: string) {
     setRetreatPending(battleTerritory);
