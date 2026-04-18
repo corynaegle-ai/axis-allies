@@ -85,21 +85,13 @@ export function Globe() {
           <stop offset="0%" stopColor="rgba(255,255,255,0.12)" />
           <stop offset="60%" stopColor="rgba(255,255,255,0)" />
         </radialGradient>
-        <filter id="globe-shadow" x="-20%" y="-20%" width="140%" height="140%">
-          <feGaussianBlur in="SourceAlpha" stdDeviation="8" result="blur" />
-          <feOffset dx="4" dy="6" result="offset" />
-          <feComponentTransfer result="shadow">
-            <feFuncA type="linear" slope="0.5" />
-          </feComponentTransfer>
-          <feMerge><feMergeNode in="shadow" /><feMergeNode in="SourceGraphic" /></feMerge>
-        </filter>
       </defs>
 
-      {/* Drop shadow */}
-      <ellipse cx={SIZE / 2 + 6} cy={SIZE / 2 + 10} rx={RADIUS * 0.9} ry={RADIUS * 0.22}
-        fill="rgba(0,0,0,0.35)" style={{ filter: "blur(8px)" }} />
+      {/* Drop shadow ellipse — no SVG filter on the globe content to avoid graticule artifacts */}
+      <ellipse cx={SIZE / 2 + 6} cy={SIZE / 2 + 12} rx={RADIUS * 0.88} ry={RADIUS * 0.2}
+        fill="rgba(0,0,0,0.45)" style={{ filter: "blur(10px)" }} />
 
-      <g filter="url(#globe-shadow)">
+      <g>
         {/* Ocean */}
         <path d={path(outline as any) ?? ""} fill="url(#ocean-grad)" />
 
