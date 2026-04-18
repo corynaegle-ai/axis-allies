@@ -5,6 +5,7 @@ import {
 import { Board } from "./Board.js";
 import { Panel } from "./Panel.js";
 import { Net } from "./net.js";
+import { UnitSelectionPopup } from "./UnitSelectionPopup.js";
 
 interface GameProps {
   net: Net;
@@ -20,7 +21,9 @@ interface GameProps {
 export function Game({ net, gameId, state, myPower, error, notice, lastSaved, onQuit }: GameProps) {
   const [selected, setSelected] = useState<string | null>(null);
   const [moveSrc, setMoveSrc] = useState<string | null>(null);
-  const [moveUnits, setMoveUnits] = useState<Set<string>>(new Set());
+  const [moveUnits, setMoveUnits] = useState<string[]>([]);
+  const [showUnitPicker, setShowUnitPicker] = useState(false);
+  const [pickerSource, setPickerSource] = useState<string | null>(null);
   const [retreatPending, setRetreatPending] = useState<string | null>(null);
   const [confirmingQuit, setConfirmingQuit] = useState(false);
   const [now, setNow] = useState(Date.now());
@@ -35,12 +38,12 @@ export function Game({ net, gameId, state, myPower, error, notice, lastSaved, on
     if (!moveSrc) return new Set();
     const src = TERRITORY_MAP[moveSrc];
     if (!src) return new Set();
-    const maxMove = moveUnits.size > 0
-      ? Math.max(...[...moveUnits].map((id) => UNITS[state.units[id]?.unit ?? "infantry"].move))
+    const maxMove = moveUnits.length > 0
+      ? Math.max(...moveUnits.map((id) => UNITS[state.units[id]?.unit ?? "infantry"].move))
       : 0;
     if (maxMove === 0) return new Set();
 
-    const domains = new Set([...moveUnits].map((id) => UNITS[state.units[id]?.unit ?? "infantry"].domain));
+    const domains = new Set(moveUnits.map((id) => UNITS[state.units[id]?.unit ?? "infantry"].domain));
     const allLand = [...domains].every((d) => d === "land");
     const allSea = [...domains].every((d) => d === "sea");
 
@@ -78,30 +81,41 @@ export function Game({ net, gameId, state, myPower, error, notice, lastSaved, on
     if (state.phase === "purchase" || state.phase === "collect" || state.phase === "place") return;
 
     if (state.phase === "combatMove" || state.phase === "nonCombatMove") {
+      if (myPower !== state.activePower) return;
+
       if (!moveSrc) {
-        const hasOwnUnit = Object.values(state.units).some((u) => u.territory === id && u.owner === myPower);
-        if (hasOwnUnit) {
-          setMoveSrc(id);
-          const own = Object.values(state.units).filter((u) => u.territory === id && u.owner === myPower);
-          setMoveUnits(new Set(own.map((u) => u.id)));
+        const myUnits = Object.values(state.units).filter(u => u.territory === id && u.owner === myPower);
+        if (myUnits.length > 0) {
+          setPickerSource(id);
+          setShowUnitPicker(true);
         }
       } else {
-        if (id === moveSrc) { setMoveSrc(null); setMoveUnits(new Set()); return; }
+        if (id === moveSrc) { setMoveSrc(null); setMoveUnits([]); return; }
         const path = bfsPath(moveSrc, id);
-        if (!path) return;
-        const unitIds = [...moveUnits];
-        if (unitIds.length === 0) return;
+        if (!path || moveUnits.length === 0) return;
         net.send({
           type: "moveOrder",
           gameId,
-          unitIds,
+          unitIds: moveUnits,
           path,
           kind: state.phase === "combatMove" ? "combat" : "nonCombat",
         });
         setMoveSrc(null);
-        setMoveUnits(new Set());
+        setMoveUnits([]);
       }
     }
+  }
+
+  function onPickerConfirm(unitIds: string[]) {
+    setShowUnitPicker(false);
+    setMoveSrc(pickerSource!);
+    setMoveUnits(unitIds);
+    setPickerSource(null);
+  }
+
+  function onPickerCancel() {
+    setShowUnitPicker(false);
+    setPickerSource(null);
   }
 
   function onPurchase(orders: { unit: UnitId; qty: number }[]) {
@@ -169,7 +183,7 @@ export function Game({ net, gameId, state, myPower, error, notice, lastSaved, on
         </div>
         {moveSrc && (
           <div className="legend">
-            Moving from <b>{TERRITORY_MAP[moveSrc].name}</b> · click destination ({moveUnits.size} units) — click origin again to cancel
+            Moving from <b>{TERRITORY_MAP[moveSrc].name}</b> · click destination ({moveUnits.length} units) — click origin again to cancel
           </div>
         )}
         {retreatPending && (
@@ -183,6 +197,16 @@ export function Game({ net, gameId, state, myPower, error, notice, lastSaved, on
           <div className="toast toast-victory">
             {state.winner === "axis" ? "AXIS VICTORY" : "ALLIES VICTORY"}
           </div>
+        )}
+        {showUnitPicker && pickerSource && myPower && (
+          <UnitSelectionPopup
+            sourceId={pickerSource}
+            units={Object.values(state.units).filter(u => u.territory === pickerSource && u.owner === myPower)}
+            myPower={myPower}
+            state={state}
+            onConfirm={onPickerConfirm}
+            onCancel={onPickerCancel}
+          />
         )}
       </div>
 
