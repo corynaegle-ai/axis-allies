@@ -287,23 +287,9 @@ export function Board(props: BoardProps) {
     </svg>
 
     <div className="map-controls">
-      <button className="map-btn" onClick={zoomIn} title="Zoom in">
-        <span>+</span><span>Zoom In</span>
-      </button>
-      <button className="map-btn" onClick={zoomOut} title="Zoom out">
-        <span>−</span><span>Zoom Out</span>
-      </button>
-      <button className="map-btn" onClick={centerMap} title="Fit map to screen">
-        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
-          <circle cx="8" cy="8" r="5" fill="none" stroke="currentColor" strokeWidth="1.6" />
-          <circle cx="8" cy="8" r="1.2" fill="currentColor" />
-          <line x1="8" y1="1" x2="8" y2="4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-          <line x1="8" y1="12" x2="8" y2="15" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-          <line x1="1" y1="8" x2="4" y2="8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-          <line x1="12" y1="8" x2="15" y2="8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-        </svg>
-        <span>Center</span>
-      </button>
+      <button className="map-btn map-btn-icon" onClick={zoomIn} title="Zoom in">+</button>
+      <button className="map-btn map-btn-icon" onClick={zoomOut} title="Zoom out">−</button>
+      <button className="map-btn map-btn-icon" onClick={centerMap} title="Fit map to screen">⊙</button>
     </div>
     </>
   );

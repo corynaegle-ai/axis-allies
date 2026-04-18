@@ -153,3 +153,13 @@
 }
 .map-controls .map-btn:active { transform: translateY(1px); }
 .map-controls .map-btn svg { color: #d6b667; }
+.map-controls .map-btn.map-btn-icon {
+  padding: 0;
+  width: 36px;
+  height: 36px;
+  font-size: 20px;
+  font-family: system-ui, sans-serif;
+  font-weight: 400;
+  letter-spacing: 0;
+  justify-content: center;
+}
