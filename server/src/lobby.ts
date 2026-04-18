@@ -62,4 +62,33 @@ export class Lobby {
     room.state = newGame(room.id);
     room.started = true;
   }
+
+  /** Rebuild a room from a persisted snapshot (called on server restart). */
+  restoreRoom(
+    gameId: string,
+    gameName: string,
+    state: GameState,
+    players: Array<{ sessionId: string; name: string; power: PowerId; status: string }>,
+  ): Room {
+    const room: Room = {
+      id: gameId,
+      name: gameName,
+      state,
+      players: new Map(
+        players
+          .filter((p) => p.status === "active")
+          .map((p) => [p.sessionId, { name: p.name, power: p.power }]),
+      ),
+      sockets: new Set(),
+      started: true,
+    };
+    this.rooms.set(gameId, room);
+    // Restore session stubs so players can reconnect with their sessionId.
+    for (const p of players) {
+      if (!this.sessions.has(p.sessionId)) {
+        this.sessions.set(p.sessionId, { sessionId: p.sessionId, name: p.name, power: p.power });
+      }
+    }
+    return room;
+  }
 }

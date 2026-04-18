@@ -6,6 +6,9 @@ import fs from "node:fs";
 import { ClientMsg, ServerMsg } from "@aa/shared";
 import { Lobby } from "./lobby.js";
 import { advancePhase, applyMove, applyPlace, applyPurchase, applyResolveBattle } from "./game.js";
+import {
+  openDb, saveGame, createGameRecord, addGamePlayer, upsertPlayer, loadActiveGames,
+} from "./db.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -13,7 +16,13 @@ const __dirname = path.dirname(__filename);
 const PORT = Number(process.env.PORT ?? 8787);
 const CLIENT_DIST = path.resolve(__dirname, "../../client/dist");
 
+// Open DB and restore any in-progress games before accepting connections.
+openDb();
 const lobby = new Lobby();
+for (const saved of loadActiveGames()) {
+  lobby.restoreRoom(saved.gameId, saved.gameName, saved.state, saved.players);
+  console.log(`[db] Restored game ${saved.gameId} (turn ${saved.state.turn}, ${saved.players.length} players)`);
+}
 
 const server = http.createServer((req, res) => {
   // Serve built client if present, otherwise a helpful message.
@@ -69,6 +78,7 @@ wss.on("connection", (ws) => {
         case "hello": {
           const session = lobby.ensureSession(msg.sessionId, msg.name);
           lobby.sockets.set(ws, session.sessionId);
+          upsertPlayer(session);
           send(ws, { type: "welcome", session });
           send(ws, { type: "games", games: lobby.summary() });
           return;
@@ -80,6 +90,7 @@ wss.on("connection", (ws) => {
         case "createGame": {
           if (!sessionId) return send(ws, { type: "error", message: "No session." });
           const room = lobby.createRoom(msg.name || "Game");
+          createGameRecord(room.id, room.name);
           room.sockets.add(ws);
           broadcastLobby();
           send(ws, { type: "info", message: `Created ${room.id}` });
@@ -92,6 +103,7 @@ wss.on("connection", (ws) => {
           const session = lobby.sessions.get(sessionId)!;
           const err = lobby.joinRoom(room, sessionId, session.name, msg.power);
           if (err) return send(ws, { type: "error", message: err });
+          addGamePlayer(msg.gameId, sessionId, msg.power);
           room.sockets.add(ws);
           session.power = msg.power;
           broadcastLobby();
@@ -110,6 +122,7 @@ wss.on("connection", (ws) => {
           const room = lobby.rooms.get(msg.gameId);
           if (!room) return send(ws, { type: "error", message: "No such game." });
           lobby.startRoom(room);
+          saveGame(room.id, room.name, room.state!);
           broadcastRoom(room.id, { type: "gameState", state: room.state! });
           broadcastLobby();
           return;
@@ -121,6 +134,7 @@ wss.on("connection", (ws) => {
           if (!p) return send(ws, { type: "error", message: "You have no power." });
           const err = applyPurchase(room.state, p, msg.orders);
           if (err) return send(ws, { type: "error", message: err });
+          saveGame(room.id, room.name, room.state);
           broadcastRoom(room.id, { type: "gameState", state: room.state });
           return;
         }
@@ -131,6 +145,7 @@ wss.on("connection", (ws) => {
           if (!p) return send(ws, { type: "error", message: "You have no power." });
           const err = applyMove(room.state, p, msg.unitIds, msg.path, msg.kind);
           if (err) return send(ws, { type: "error", message: err });
+          saveGame(room.id, room.name, room.state);
           broadcastRoom(room.id, { type: "gameState", state: room.state });
           return;
         }
@@ -143,6 +158,7 @@ wss.on("connection", (ws) => {
             retreat: msg.retreat, retreatTo: msg.retreatTo, casualties: msg.casualties,
           });
           if (err) return send(ws, { type: "error", message: err });
+          saveGame(room.id, room.name, room.state);
           broadcastRoom(room.id, { type: "gameState", state: room.state });
           return;
         }
@@ -153,6 +169,7 @@ wss.on("connection", (ws) => {
           if (!p) return;
           const err = applyPlace(room.state, p, msg.unit as any, msg.territory);
           if (err) return send(ws, { type: "error", message: err });
+          saveGame(room.id, room.name, room.state);
           broadcastRoom(room.id, { type: "gameState", state: room.state });
           return;
         }
@@ -164,6 +181,7 @@ wss.on("connection", (ws) => {
             return send(ws, { type: "error", message: "Not your turn." });
           }
           advancePhase(room.state);
+          saveGame(room.id, room.name, room.state);
           broadcastRoom(room.id, { type: "gameState", state: room.state });
           return;
         }
