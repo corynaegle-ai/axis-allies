@@ -325,10 +325,10 @@ function renderStacks(
   byOwner: Record<PowerId, Partial<Record<UnitId, UnitStack[]>>> | undefined,
 ): React.ReactNode {
   if (!byOwner) return null;
-  const entries: { owner: PowerId; unit: UnitId; count: number }[] = [];
+  const entries: { owner: PowerId; unit: UnitId; count: number; damaged: boolean }[] = [];
   for (const [owner, byUnit] of Object.entries(byOwner) as [PowerId, Partial<Record<UnitId, UnitStack[]>>][]) {
     for (const [unit, stacks] of Object.entries(byUnit) as [UnitId, UnitStack[]][]) {
-      entries.push({ owner, unit, count: stacks.length });
+      entries.push({ owner, unit, count: stacks.length, damaged: stacks.some((s) => (s.hitsTaken ?? 0) > 0) });
     }
   }
   entries.sort((a, b) => {
@@ -358,6 +358,9 @@ function renderStacks(
                 <rect x={16} y={14} width={12} height={10} rx={2} fill="#000" opacity={0.7} />
                 <text className="stack-count" x={22} y={22}>{e.count}</text>
               </>
+            )}
+            {e.damaged && UNITS[e.unit].hitpoints > 1 && (
+              <circle cx={22} cy={2} r={3} fill="#e03030" />
             )}
           </g>
         );

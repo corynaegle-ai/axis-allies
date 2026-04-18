@@ -59,15 +59,6 @@ export interface UnitStack {
   movesUsed?: number;
 }
 
-export interface Order {
-  /** Combat-move or non-combat-move order: a set of units moving on a path */
-  id: string;
-  owner: PowerId;
-  unitIds: string[];
-  path: string[]; // territory ids, including origin and destination
-  kind: "combat" | "nonCombat";
-}
-
 export interface PurchaseOrder {
   unit: UnitId;
   qty: number;
@@ -114,7 +105,6 @@ export interface GameState {
   }>;
   territories: Record<string, TerritoryState>;
   units: Record<string, UnitStack>;
-  pendingOrders: Order[];
   battles: Battle[];
   log: string[];
   winner?: Alliance;

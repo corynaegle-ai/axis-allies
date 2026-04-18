@@ -31,6 +31,7 @@ interface PanelProps {
   onEndPhase: () => void;
   onResolveBattle: (territory: string, opts: { retreat?: boolean; retreatTo?: string }) => void;
   onPlace: (unit: UnitId, territory: string) => void;
+  onRetreat: (battleTerritory: string) => void;
 }
 
 const PHASE_LABEL: Record<string, string> = {
@@ -53,7 +54,7 @@ const PHASE_SUB: Record<string, string> = {
 
 export function Panel({
   state, myPower, selectedTerritory,
-  onPurchase, onEndPhase, onResolveBattle, onPlace,
+  onPurchase, onEndPhase, onResolveBattle, onPlace, onRetreat,
 }: PanelProps): JSX.Element {
   const active = state.activePower;
   const isMyTurn = myPower === active;
@@ -142,7 +143,7 @@ export function Panel({
       )}
 
       {state.phase === "combat" && (
-        <BattleBox state={state} myPower={myPower} onResolve={onResolveBattle} />
+        <BattleBox state={state} myPower={myPower} onResolve={onResolveBattle} onRetreat={onRetreat} />
       )}
 
       {/* 3. INTEL ------------------------------------------------------ */}
@@ -402,11 +403,12 @@ function PlaceBox({
 /* =================================================================== */
 
 function BattleBox({
-  state, myPower, onResolve,
+  state, myPower, onResolve, onRetreat,
 }: {
   state: GameState;
   myPower: PowerId | null;
   onResolve: (t: string, opts: { retreat?: boolean; retreatTo?: string }) => void;
+  onRetreat: (battleTerritory: string) => void;
 }) {
   const open = state.battles.filter((b) => !b.resolved);
 
@@ -498,10 +500,7 @@ function BattleBox({
                 <button
                   className="mj-btn mj-btn-retreat"
                   disabled={!canAct}
-                  onClick={() => {
-                    const origin = prompt("Retreat to which adjacent friendly territory? (type id)") || "";
-                    if (origin) onResolve(b.territory, { retreat: true, retreatTo: origin });
-                  }}
+                  onClick={() => onRetreat(b.territory)}
                 >
                   Retreat
                 </button>

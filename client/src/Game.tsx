@@ -18,12 +18,23 @@ export function Game({ net, gameId, state, myPower, error }: GameProps) {
   const [selected, setSelected] = useState<string | null>(null);
   const [moveSrc, setMoveSrc] = useState<string | null>(null);
   const [moveUnits, setMoveUnits] = useState<Set<string>>(new Set());
+  const [retreatPending, setRetreatPending] = useState<string | null>(null);
 
   const reachable = useMemo<Set<string>>(() => {
     if (!moveSrc) return new Set();
     const src = TERRITORY_MAP[moveSrc];
     if (!src) return new Set();
-    const maxMove = 4;
+    const maxMove = moveUnits.size > 0
+      ? Math.max(...[...moveUnits].map((id) => UNITS[state.units[id]?.unit ?? "infantry"].move))
+      : 0;
+    if (maxMove === 0) return new Set();
+
+    // Determine domain of selected units
+    const domains = new Set([...moveUnits].map((id) => UNITS[state.units[id]?.unit ?? "infantry"].domain));
+    const allLand = [...domains].every((d) => d === "land");
+    const allSea = [...domains].every((d) => d === "sea");
+    const allAir = [...domains].every((d) => d === "air");
+
     const out = new Set<string>();
     const q: [string, number][] = [[moveSrc, 0]];
     const seen = new Set<string>([moveSrc]);
@@ -32,15 +43,28 @@ export function Game({ net, gameId, state, myPower, error }: GameProps) {
       if (d >= maxMove) continue;
       for (const n of TERRITORY_MAP[id]?.neighbors ?? []) {
         if (seen.has(n)) continue;
+        const nTerrain = TERRITORY_MAP[n]?.terrain;
+        if (allLand && nTerrain !== "land") continue;
+        if (allSea && nTerrain !== "sea") continue;
+        // allAir or mixed: allow all terrain
         seen.add(n);
         out.add(n);
         q.push([n, d + 1]);
       }
     }
     return out;
-  }, [moveSrc]);
+  }, [moveSrc, moveUnits, state.units]);
+
+  function onRetreatRequest(battleTerritory: string) {
+    setRetreatPending(battleTerritory);
+  }
 
   function onTerritoryClick(id: string): void {
+    if (retreatPending) {
+      net.send({ type: "resolveBattle", gameId, territory: retreatPending, retreat: true, retreatTo: id });
+      setRetreatPending(null);
+      return;
+    }
     setSelected(id);
 
     // Purchase / collect / place: just select for info
@@ -115,6 +139,11 @@ export function Game({ net, gameId, state, myPower, error }: GameProps) {
             Moving from <b>{TERRITORY_MAP[moveSrc].name}</b> · click destination ({moveUnits.size} units) — click origin again to cancel
           </div>
         )}
+        {retreatPending && (
+          <div className="legend">
+            Retreat from <b>{TERRITORY_MAP[retreatPending]?.name ?? retreatPending}</b> · click destination territory to retreat
+          </div>
+        )}
         {error && <div className="toast">{error}</div>}
         {state.winner && (
           <div className="toast" style={{ background: "#0f2a18", color: "#cfe", borderColor: "#2a5a3a" }}>
@@ -135,6 +164,7 @@ export function Game({ net, gameId, state, myPower, error }: GameProps) {
           onEndPhase={onEndPhase}
           onResolveBattle={onResolveBattle}
           onPlace={onPlace}
+          onRetreat={onRetreatRequest}
         />
         <div className="log">
           {[...state.log].reverse().slice(0, 80).map((l, i) => <div key={i}>{l}</div>)}

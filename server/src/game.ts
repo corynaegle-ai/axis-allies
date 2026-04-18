@@ -1,5 +1,5 @@
 import {
-  GameState, PowerId, Phase, UnitStack, Order, Battle, TerritoryState,
+  GameState, PowerId, Phase, UnitStack, Battle, TerritoryState,
   PurchaseOrder, UnitId, POWERS, POWER_ORDER, TERRITORIES, TERRITORY_MAP,
   STARTING_SETUP, UNITS, isLand, isSea, isAir,
 } from "@aa/shared";
@@ -41,7 +41,6 @@ export function newGame(id: string): GameState {
     powers,
     territories,
     units,
-    pendingOrders: [],
     battles: [],
     log: [`Game started. Russia's turn.`],
   };
@@ -72,7 +71,7 @@ export function applyPurchase(state: GameState, power: PowerId, orders: Purchase
   if (cost > state.powers[power].treasury) return "Not enough IPCs.";
   state.powers[power].treasury -= cost;
   state.powers[power].producedThisTurn.push(...orders);
-  state.log.push(`${POWERS[power].name} purchased: ${orders.map(o => `${o.qty}×${o.unit}`).join(", ") || "(nothing)"}`);
+  appendLog(state,`${POWERS[power].name} purchased: ${orders.map(o => `${o.qty}×${o.unit}`).join(", ") || "(nothing)"}`);
   return null;
 }
 
@@ -98,7 +97,12 @@ export function applyMove(
     if (u.territory !== origin) return "Unit not at origin.";
     const def = UNITS[u.unit];
     const steps = path.length - 1;
-    if (steps > def.move) return `${def.name} can't move ${steps} spaces.`;
+    const stepsUsed = u.movesUsed ?? 0;
+    if (stepsUsed + steps > def.move) {
+      return stepsUsed > 0
+        ? "Unit already moved its maximum distance."
+        : `${def.name} can't move ${steps} spaces.`;
+    }
     // Domain check on destination (sea unit must land in sea, etc.)
     if (isLand(u.unit) && destTerr.terrain !== "land") return `${def.name} can't enter sea.`;
     if (isSea(u.unit) && destTerr.terrain !== "sea") return `${def.name} can't enter land.`;
@@ -125,6 +129,9 @@ export function applyMove(
     );
     if (defenders.length > 0) return "Cannot non-combat into enemy units.";
     const territoryOwner = state.territories[dest].owner;
+    if (destTerr.terrain === "land" && territoryOwner === null) {
+      return "Cannot non-combat into neutral territory.";
+    }
     if (destTerr.terrain === "land" && territoryOwner != null && POWERS[territoryOwner].alliance !== POWERS[power].alliance) {
       return "Cannot non-combat into enemy territory.";
     }
@@ -137,10 +144,6 @@ export function applyMove(
     u.territory = dest;
     u.movesUsed = (u.movesUsed ?? 0) + (path.length - 1);
   }
-
-  state.pendingOrders.push({
-    id: nanoid(8), owner: power, unitIds, path, kind,
-  });
 
   // Create or merge battle if combat move with opposition
   if (kind === "combat") {
@@ -164,7 +167,7 @@ export function applyMove(
     battle.attackingUnits.push(...unitIds);
   }
 
-  state.log.push(`${POWERS[power].name} moved ${unitIds.length} unit(s): ${origin} → ${dest}`);
+  appendLog(state,`${POWERS[power].name} moved ${unitIds.length} unit(s): ${origin} → ${dest}`);
   return null;
 }
 
@@ -181,14 +184,15 @@ export function applyResolveBattle(
 
   if (opts.retreat) {
     const retreatTo = opts.retreatTo;
-    if (!retreatTo || !battle.attackingUnits.every((uid) => {
+    if (!retreatTo) return "Invalid retreat destination.";
+    const validRetreat = battle.attackingUnits.every((uid) => {
       const u = state.units[uid];
-      return u && u.movedFrom && TERRITORY_MAP[u.movedFrom] && [u.movedFrom, battle.territory].includes(retreatTo) || TERRITORY_MAP[u.movedFrom!]?.neighbors.includes(retreatTo);
-    })) {
-      // Simplified: attacker may retreat to the origin territory of first unit if all came from same place.
-      const firstOrigin = state.units[battle.attackingUnits[0]]?.movedFrom;
-      if (!firstOrigin || retreatTo !== firstOrigin) return "Invalid retreat destination.";
-    }
+      if (!u || !u.movedFrom) return false;
+      const origin = TERRITORY_MAP[u.movedFrom];
+      if (!origin) return false;
+      return u.movedFrom === retreatTo || origin.neighbors.includes(retreatTo);
+    });
+    if (!validRetreat) return "Invalid retreat destination.";
     for (const uid of battle.attackingUnits) {
       const u = state.units[uid];
       if (u) u.territory = retreatTo!;
@@ -196,13 +200,13 @@ export function applyResolveBattle(
     battle.attackerRetreated = true;
     battle.resolved = true;
     battle.winner = "defender";
-    state.log.push(`${POWERS[power].name} retreated from ${territory}.`);
+    appendLog(state,`${POWERS[power].name} retreated from ${territory}.`);
     return null;
   }
 
   const round = resolveBattleRound(state, battle, opts.casualties ?? []);
   battle.rounds.push(round);
-  state.log.push(
+  appendLog(state,
     `Battle at ${territory} R${battle.rounds.length}: att ${round.attackerHits}H / def ${round.defenderHits}H`
   );
 
@@ -226,18 +230,19 @@ export function applyResolveBattle(
           const looted = state.powers[p].treasury;
           state.powers[power].treasury += looted;
           state.powers[p].treasury = 0;
-          state.log.push(`${POWERS[power].name} captured ${POWERS[p].name}'s capital — looted ${looted} IPC!`);
+          appendLog(state,`${POWERS[power].name} captured ${POWERS[p].name}'s capital — looted ${looted} IPC!`);
         }
       }
     }
-    state.log.push(`${POWERS[power].name} captured ${territory}.`);
+    appendLog(state,`${POWERS[power].name} captured ${territory}.`);
   } else if (attAlive.length === 0) {
     battle.resolved = true;
     battle.winner = defAlive.length === 0 ? "draw" : "defender";
-    state.log.push(`Attacker eliminated at ${territory}.`);
+    appendLog(state,`Attacker eliminated at ${territory}.`);
   }
 
   checkVictory(state);
+  checkElimination(state);
   return null;
 }
 
@@ -278,7 +283,7 @@ export function applyPlace(state: GameState, power: PowerId, unit: UnitId, terri
   state.units[uid] = { id: uid, unit, owner: power, territory };
   pool[idx].qty -= 1;
   if (pool[idx].qty === 0) pool.splice(idx, 1);
-  state.log.push(`${POWERS[power].name} placed ${unit} at ${territory}.`);
+  appendLog(state,`${POWERS[power].name} placed ${unit} at ${territory}.`);
   return null;
 }
 
@@ -297,9 +302,10 @@ export function advancePhase(state: GameState): void {
         b.winner = "attacker";
         const t = TERRITORY_MAP[b.territory];
         if (t.terrain === "land") state.territories[b.territory].owner = current;
-        state.log.push(`${POWERS[current].name} walked into ${b.territory}.`);
+        appendLog(state,`${POWERS[current].name} walked into ${b.territory}.`);
       }
     }
+    checkElimination(state);
   }
 
   if (state.phase === "collect") {
@@ -307,7 +313,7 @@ export function advancePhase(state: GameState): void {
     const income = computeIncome(state, current);
     state.powers[current].treasury += income;
     state.powers[current].income = income;
-    state.log.push(`${POWERS[current].name} collected ${income} IPC. Treasury: ${state.powers[current].treasury}.`);
+    appendLog(state,`${POWERS[current].name} collected ${income} IPC. Treasury: ${state.powers[current].treasury}.`);
 
     // Clear transient per-turn unit flags
     for (const u of Object.values(state.units)) {
@@ -317,7 +323,6 @@ export function advancePhase(state: GameState): void {
     }
     // Clear resolved battles
     state.battles = [];
-    state.pendingOrders = [];
 
     // Next active power
     const idx = POWER_ORDER.indexOf(current);
@@ -331,12 +336,28 @@ export function advancePhase(state: GameState): void {
     state.activePower = next;
     state.phase = "purchase";
     state.powers[next].income = computeIncome(state, next);
-    state.log.push(`Turn ${state.turn}: ${POWERS[next].name}'s turn.`);
+    appendLog(state,`Turn ${state.turn}: ${POWERS[next].name}'s turn.`);
     return;
   }
 
   state.phase = seq[i + 1];
-  state.log.push(`${POWERS[current].name} → ${state.phase}`);
+  appendLog(state,`${POWERS[current].name} → ${state.phase}`);
+}
+
+/** Mark a power as eliminated if their capital is held by an enemy and they have no units remaining. */
+function checkElimination(state: GameState): void {
+  for (const p of POWER_ORDER) {
+    if (state.powers[p].eliminated) continue;
+    const capital = POWERS[p].capital;
+    const capitalOwner = state.territories[capital]?.owner;
+    const capitalCaptured = capitalOwner != null && POWERS[capitalOwner].alliance !== POWERS[p].alliance;
+    if (!capitalCaptured) continue;
+    const hasUnits = Object.values(state.units).some((u) => u.owner === p);
+    if (!hasUnits) {
+      state.powers[p].eliminated = true;
+      appendLog(state, `${POWERS[p].name} has been eliminated!`);
+    }
+  }
 }
 
 /** Axis wins by holding all 3 Allied capitals simultaneously; Allies by holding both Axis capitals. */
@@ -350,4 +371,10 @@ export function checkVictory(state: GameState): void {
   const alliedCaps = ["russia", "united_kingdom", "eastern_usa"];
   if (holds("axis", alliedCaps)) state.winner = "axis";
   else if (holds("allies", axisCaps)) state.winner = "allies";
+}
+
+const LOG_CAP = 200;
+function appendLog(state: GameState, entry: string): void {
+  state.log.push(entry);
+  if (state.log.length > LOG_CAP) state.log.splice(0, state.log.length - LOG_CAP);
 }
