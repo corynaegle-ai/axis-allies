@@ -20,10 +20,9 @@ const WORLD_W = 3500;
 const WORLD_H = 2000;
 
 const HOME_VIEWPORT = { x: 0, y: 0, scale: 1.0 };
-
 const PAN_SPEED = 0.45;
 
-// Prefer geo centroid; fall back to scaling old 2048×910 coords to new canvas.
+// Prefer geo centroid; fall back to scaling old-format coords to new canvas.
 function getCenter(t: Territory): [number, number] {
   const geo = TERRITORY_GEO[t.id];
   if (geo) return geo.centroid;
@@ -31,7 +30,7 @@ function getCenter(t: Territory): [number, number] {
 }
 
 export function Board(props: BoardProps) {
-  const { state, myPower, selectedTerritory, reachable, onTerritoryClick } = props;
+  const { state, selectedTerritory, reachable, onTerritoryClick } = props;
   const svgRef = useRef<SVGSVGElement>(null);
 
   const [viewport, setViewport] = useState({ ...HOME_VIEWPORT });
@@ -109,6 +108,10 @@ export function Board(props: BoardProps) {
     return m;
   }, [state.units]);
 
+  // Separate land and sea for layer ordering (land on top of sea)
+  const landTerritories = useMemo(() => TERRITORIES.filter(t => t.terrain === "land"), []);
+  const seaTerritories  = useMemo(() => TERRITORIES.filter(t => t.terrain === "sea"),  []);
+
   return (
     <>
     <svg
@@ -123,93 +126,161 @@ export function Board(props: BoardProps) {
       onWheel={onWheel}
     >
       <defs>
-        <filter id="land-shadow" x="-20%" y="-20%" width="140%" height="140%">
-          <feGaussianBlur in="SourceAlpha" stdDeviation="2" />
-          <feOffset dx="1.5" dy="2" result="offsetblur" />
-          <feComponentTransfer><feFuncA type="linear" slope="0.5" /></feComponentTransfer>
+        <filter id="land-shadow" x="-30%" y="-30%" width="160%" height="160%">
+          <feGaussianBlur in="SourceAlpha" stdDeviation="3" />
+          <feOffset dx="2" dy="3" result="offsetblur" />
+          <feComponentTransfer><feFuncA type="linear" slope="0.45" /></feComponentTransfer>
           <feMerge>
             <feMergeNode />
             <feMergeNode in="SourceGraphic" />
           </feMerge>
         </filter>
 
-        {/* Gradient fills for land territories by power */}
+        {/* Land fill gradients per power */}
         {(["ru","de","uk","jp","us","neutral"] as const).map(code => (
           <linearGradient key={code} id={`land-${code}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={landGradientTop(code)} stopOpacity="0.82" />
-            <stop offset="100%" stopColor={landGradientBot(code)} stopOpacity="0.72" />
+            <stop offset="0%" stopColor={GRAD_TOP[code] ?? "#888"} stopOpacity="0.78" />
+            <stop offset="100%" stopColor={GRAD_BOT[code] ?? "#555"} stopOpacity="0.68" />
           </linearGradient>
         ))}
+
+        {/* Glow filter for selected territories */}
+        <filter id="glow-selected" x="-30%" y="-30%" width="160%" height="160%">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
       </defs>
 
-      {/* TripleA base terrain map — ocean and land base colors */}
+      {/* ── Layer 0: TripleA base terrain map ── */}
       <image href="/map-aa.png" x="0" y="0" width={WORLD_W} height={WORLD_H} />
 
-      {/* Territory polygons (land) and zone markers (sea) */}
-      {TERRITORIES.map((t) => {
-        const geo = TERRITORY_GEO[t.id];
-        const center = getCenter(t);
-        const owner = state.territories[t.id]?.owner ?? null;
-        const ownerCls = owner ? ownerShort(owner) : "neutral";
-        const isCap = owner != null && POWERS[owner].capital === t.id;
-        const isSelected = selectedTerritory === t.id;
-        const isReach = reachable.has(t.id);
-
-        return (
-          <g key={t.id} data-territory={t.id}
-             onClick={(e) => { e.stopPropagation(); onTerritoryClick(t.id); }}
-             style={{ cursor: "pointer" }}>
-
-            {geo ? (
-              // Actual polygon shape from TripleA geometry data
-              geo.polygons.map((pts, idx) => (
+      {/* ── Layer 1: Sea zone polygons ── */}
+      <g className="sea-zone-layer">
+        {seaTerritories.map((t) => {
+          const geo = TERRITORY_GEO[t.id];
+          const isSelected = selectedTerritory === t.id;
+          const isReach    = reachable.has(t.id);
+          if (!geo) return null;
+          return (
+            <g key={t.id} data-territory={t.id}
+               onClick={(e) => { e.stopPropagation(); onTerritoryClick(t.id); }}
+               style={{ cursor: "pointer" }}>
+              {geo.polygons.map((pts, idx) => (
                 <polygon
                   key={idx}
-                  className={`territory ${t.terrain} ${ownerCls}${isSelected ? " selected" : ""}${isReach ? " reachable" : ""}`}
+                  className={`territory sea${isSelected ? " selected" : ""}${isReach ? " reachable" : ""}`}
                   points={pts}
-                  filter={t.terrain === "land" ? "url(#land-shadow)" : undefined}
                 />
-              ))
-            ) : (
-              // Fallback marker for territories not yet in geo data
-              t.terrain === "land" ? (
+              ))}
+            </g>
+          );
+        })}
+      </g>
+
+      {/* ── Layer 2: Land territory polygons ── */}
+      <g className="land-territory-layer">
+        {landTerritories.map((t) => {
+          const geo = TERRITORY_GEO[t.id];
+          const center   = getCenter(t);
+          const owner    = state.territories[t.id]?.owner ?? null;
+          const ownerCls = owner ? OWNER_SHORT[owner] : "neutral";
+          const isCap    = owner != null && POWERS[owner].capital === t.id;
+          const isSelected = selectedTerritory === t.id;
+          const isReach    = reachable.has(t.id);
+
+          return (
+            <g key={t.id} data-territory={t.id}
+               onClick={(e) => { e.stopPropagation(); onTerritoryClick(t.id); }}
+               style={{ cursor: "pointer" }}>
+
+              {geo ? (
+                geo.polygons.map((pts, idx) => (
+                  <polygon
+                    key={idx}
+                    className={`territory land ${ownerCls}${isSelected ? " selected" : ""}${isReach ? " reachable" : ""}`}
+                    points={pts}
+                    filter={isSelected ? "url(#glow-selected)" : "url(#land-shadow)"}
+                  />
+                ))
+              ) : (
+                // Fallback hex marker for territories not in geo data
                 <polygon
                   className={`territory land ${ownerCls}${isSelected ? " selected" : ""}${isReach ? " reachable" : ""}`}
-                  points={hexPoints(center[0], center[1], 28)}
+                  points={hexPoints(center[0], center[1], 32)}
                   filter="url(#land-shadow)"
                   opacity="0.72"
                 />
-              ) : (
-                <ellipse
-                  className={`territory sea${isSelected ? " selected" : ""}${isReach ? " reachable" : ""}`}
-                  cx={center[0]} cy={center[1]} rx={28} ry={20}
-                  opacity="0.5"
+              )}
+
+              {isCap && (
+                <circle
+                  className="capital-marker"
+                  cx={center[0]}
+                  cy={center[1] - (geo ? 22 : 16)}
+                  r={geo ? 7 : 4}
                 />
-              )
-            )}
+              )}
 
-            {isCap && (
-              <circle
-                className="capital-marker"
-                cx={center[0]} cy={center[1] - (geo ? 20 : 14)}
-                r={geo ? 6 : 3.5}
-              />
-            )}
+              {renderStacks(t.id, center[0], center[1], stacksByTerritory[t.id], !!geo)}
+            </g>
+          );
+        })}
+      </g>
 
-            {renderStacks(t.id, center[0], center[1], stacksByTerritory[t.id], !!geo)}
-          </g>
-        );
-      })}
+      {/* ── Layer 3: Territory labels ── */}
+      <g className="labels-layer" pointerEvents="none">
+        {landTerritories.map((t) => {
+          const geo = TERRITORY_GEO[t.id];
+          if (!geo) return null;
+          const [cx, cy] = geo.centroid;
+          return (
+            <g key={t.id} className="territory-label-group">
+              {/* Territory name */}
+              <text
+                className="territory-label land-label"
+                x={cx} y={cy - 4}
+              >
+                {t.name}
+              </text>
+              {/* IPC value badge */}
+              {t.ipc > 0 && (
+                <text
+                  className="territory-ipc"
+                  x={cx} y={cy + 16}
+                >
+                  {t.ipc}
+                </text>
+              )}
+            </g>
+          );
+        })}
+        {seaTerritories.map((t) => {
+          const geo = TERRITORY_GEO[t.id];
+          if (!geo) return null;
+          const [cx, cy] = geo.centroid;
+          // Only show SZ number, not full "Sea Zone N" text
+          const szNum = t.id.replace("sz_", "");
+          return (
+            <text key={t.id} className="sea-zone-number" x={cx} y={cy}>
+              {szNum}
+            </text>
+          );
+        })}
+      </g>
 
-      {/* Animated ring on active power's capital */}
+      {/* ── Layer 4: Active power capital pulse ring ── */}
       {(() => {
         const cap = POWERS[state.activePower].capital;
         const t = TERRITORY_MAP[cap];
         if (!t) return null;
         const [cx, cy] = getCenter(t);
         return (
-          <circle cx={cx} cy={cy - 20} r={14} fill="none" stroke="#ffd05b" strokeWidth="2.5" strokeDasharray="4 4">
-            <animate attributeName="r" values="14;20;14" dur="1.6s" repeatCount="indefinite" />
+          <circle cx={cx} cy={cy - 22} r={16} fill="none" stroke="#ffd05b" strokeWidth="3" strokeDasharray="5 4">
+            <animate attributeName="r" values="16;24;16" dur="1.6s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="1;0.5;1" dur="1.6s" repeatCount="indefinite" />
           </circle>
         );
       })()}
@@ -217,12 +288,10 @@ export function Board(props: BoardProps) {
 
     <div className="map-controls">
       <button className="map-btn" onClick={zoomIn} title="Zoom in">
-        <span>+</span>
-        <span>Zoom In</span>
+        <span>+</span><span>Zoom In</span>
       </button>
       <button className="map-btn" onClick={zoomOut} title="Zoom out">
-        <span>−</span>
-        <span>Zoom Out</span>
+        <span>−</span><span>Zoom Out</span>
       </button>
       <button className="map-btn" onClick={centerMap} title="Fit map to screen">
         <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
@@ -240,16 +309,24 @@ export function Board(props: BoardProps) {
   );
 }
 
-function ownerShort(id: PowerId): string {
-  return { russia: "ru", germany: "de", uk: "uk", japan: "jp", usa: "us" }[id];
-}
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
 
-function landGradientTop(code: string): string {
-  return { ru: "#c4453a", de: "#7a7a7a", uk: "#d4b262", jp: "#e8a040", us: "#4e8a6c", neutral: "#b8a870" }[code] ?? "#888";
-}
-function landGradientBot(code: string): string {
-  return { ru: "#8c2826", de: "#505050", uk: "#9e7830", jp: "#a0601a", us: "#2e5a3e", neutral: "#7a7255" }[code] ?? "#555";
-}
+const OWNER_SHORT: Record<PowerId, string> = {
+  russia: "ru", germany: "de", uk: "uk", japan: "jp", usa: "us",
+};
+
+const GRAD_TOP: Record<string, string> = {
+  ru: "#c84840", de: "#848484", uk: "#d4b060", jp: "#e8a040", us: "#4e8a6c", neutral: "#b4a472",
+};
+const GRAD_BOT: Record<string, string> = {
+  ru: "#8c2828", de: "#525252", uk: "#9e7830", jp: "#a06020", us: "#2e5a40", neutral: "#7a7050",
+};
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function hexPoints(cx: number, cy: number, r: number): string {
   const pts: string[] = [];
@@ -268,6 +345,7 @@ function renderStacks(
   hasGeo: boolean,
 ): React.ReactNode {
   if (!byOwner) return null;
+
   const entries: { owner: PowerId; unit: UnitId; count: number; damaged: boolean }[] = [];
   for (const [owner, byUnit] of Object.entries(byOwner) as [PowerId, Partial<Record<UnitId, UnitStack[]>>][]) {
     for (const [unit, stacks] of Object.entries(byUnit) as [UnitId, UnitStack[]][]) {
@@ -280,10 +358,10 @@ function renderStacks(
   });
 
   const perRow = 4;
-  const cellW = hasGeo ? 30 : 24;
-  const cellH = hasGeo ? 30 : 24;
-  // Offset the stack below the territory center
-  const startY = cy + (hasGeo ? 12 : 8);
+  const cellW = hasGeo ? 32 : 26;
+  const cellH = hasGeo ? 32 : 26;
+  // Place stack below centroid
+  const startY = cy + (hasGeo ? 20 : 10);
 
   return (
     <g data-stack={tid}>
@@ -294,19 +372,19 @@ function renderStacks(
         const y = startY + row * cellH;
         const power = POWERS[e.owner];
         return (
-          <g key={`${e.owner}-${e.unit}-${i}`} transform={`translate(${x - 12}, ${y - 12})`}>
-            <rect x={0} y={0} width={24} height={24} rx={4} fill={power.color} stroke={power.accent} strokeWidth={1} />
-            <g transform="translate(-2,-2) scale(0.7)">
+          <g key={`${e.owner}-${e.unit}-${i}`} transform={`translate(${x - 13}, ${y - 13})`}>
+            <rect x={0} y={0} width={26} height={26} rx={5} fill={power.color} stroke={power.accent} strokeWidth={1.5} />
+            <g transform="translate(-1.5,-1.5) scale(0.75)">
               <Piece unit={e.unit} fill="#fff" accent={power.accent} size={28} />
             </g>
             {e.count > 1 && (
               <>
-                <rect x={16} y={14} width={12} height={10} rx={2} fill="#000" opacity={0.7} />
-                <text className="stack-count" x={22} y={22}>{e.count}</text>
+                <rect x={17} y={15} width={13} height={11} rx={3} fill="#000" opacity={0.75} />
+                <text className="stack-count" x={23} y={23}>{e.count}</text>
               </>
             )}
             {e.damaged && UNITS[e.unit].hitpoints > 1 && (
-              <circle cx={22} cy={2} r={3} fill="#e03030" />
+              <circle cx={23} cy={2} r={4} fill="#e03030" />
             )}
           </g>
         );
