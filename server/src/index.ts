@@ -3,11 +3,12 @@ import http from "node:http";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import fs from "node:fs";
-import { ClientMsg, ServerMsg } from "@aa/shared";
+import { ClientMsg, ServerMsg, POWERS, POWER_ORDER } from "@aa/shared";
 import { Lobby } from "./lobby.js";
 import { advancePhase, applyMove, applyPlace, applyPurchase, applyResolveBattle } from "./game.js";
 import {
-  openDb, saveGame, createGameRecord, addGamePlayer, upsertPlayer, loadActiveGames,
+  openDb, saveGame, createGameRecord, addGamePlayer, markPlayerQuit,
+  upsertPlayer, loadActiveGames,
 } from "./db.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -25,7 +26,6 @@ for (const saved of loadActiveGames()) {
 }
 
 const server = http.createServer((req, res) => {
-  // Serve built client if present, otherwise a helpful message.
   if (!fs.existsSync(CLIENT_DIST)) {
     res.writeHead(200, { "Content-Type": "text/plain" });
     res.end("Axis & Allies server is running. Run `npm run dev:client` separately, or build the client.");
@@ -35,7 +35,6 @@ const server = http.createServer((req, res) => {
   if (reqPath === "/") reqPath = "/index.html";
   const abs = path.join(CLIENT_DIST, reqPath);
   if (!abs.startsWith(CLIENT_DIST) || !fs.existsSync(abs)) {
-    // SPA fallback
     res.writeHead(200, { "Content-Type": "text/html" });
     fs.createReadStream(path.join(CLIENT_DIST, "index.html")).pipe(res);
     return;
@@ -65,6 +64,21 @@ function broadcastRoom(roomId: string, msg: ServerMsg): void {
 function broadcastLobby(): void {
   const msg: ServerMsg = { type: "games", games: lobby.summary() };
   for (const ws of wss.clients) send(ws as WebSocket, msg);
+}
+
+/**
+ * After advancing the phase, keep advancing while the active power has quit.
+ * This skips all 6 phases of any forfeited power so the game continues unblocked.
+ * Guard prevents infinite loops if (somehow) all powers have quit.
+ */
+function advanceSkippingQuit(roomId: string): void {
+  const room = lobby.rooms.get(roomId);
+  if (!room?.state) return;
+  const maxSteps = POWER_ORDER.length * 6;
+  let steps = 0;
+  while (room.quitPowers.has(room.state.activePower) && !room.state.winner && steps++ < maxSteps) {
+    advancePhase(room.state);
+  }
 }
 
 wss.on("connection", (ws) => {
@@ -181,8 +195,53 @@ wss.on("connection", (ws) => {
             return send(ws, { type: "error", message: "Not your turn." });
           }
           advancePhase(room.state);
+          advanceSkippingQuit(room.id);
           saveGame(room.id, room.name, room.state);
           broadcastRoom(room.id, { type: "gameState", state: room.state });
+          return;
+        }
+        case "quitGame": {
+          const room = lobby.rooms.get(msg.gameId);
+          if (!room || !room.state || !sessionId) return;
+          const player = room.players.get(sessionId);
+          if (!player?.power) return send(ws, { type: "error", message: "You are not in this game." });
+
+          const quittingPower = player.power;
+          const quittingName = player.name;
+
+          // Mark in DB and update in-memory structures.
+          markPlayerQuit(msg.gameId, sessionId);
+          room.quitPowers.add(quittingPower);
+          room.players.delete(sessionId);
+
+          room.state.log.push(`${quittingName} (${POWERS[quittingPower].name}) has forfeited.`);
+
+          // Determine outcome based on remaining human players.
+          const remaining = [...room.players.values()];
+          if (remaining.length === 0) {
+            // Everyone quit — abandon the game.
+            room.state.log.push("All players have left. Game abandoned.");
+          } else if (remaining.length === 1) {
+            // Last player standing wins — declare their alliance the victor.
+            const lastPower = remaining[0].power!;
+            room.state.winner = POWERS[lastPower].alliance;
+            room.state.log.push(`${remaining[0].name} wins by forfeit!`);
+          } else {
+            // 3+ player game continues; if it's the quit power's turn, auto-advance.
+            if (room.state.activePower === quittingPower) {
+              advanceSkippingQuit(room.id);
+            }
+          }
+
+          saveGame(room.id, room.name, room.state);
+          broadcastRoom(room.id, {
+            type: "playerQuit",
+            gameId: room.id,
+            power: quittingPower,
+            playerName: quittingName,
+          });
+          broadcastRoom(room.id, { type: "gameState", state: room.state });
+          broadcastLobby();
           return;
         }
         case "chat": {

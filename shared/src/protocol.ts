@@ -14,7 +14,8 @@ export type ClientMsg =
   | { type: "endPhase"; gameId: string }
   | { type: "resolveBattle"; gameId: string; territory: string; retreat?: boolean; retreatTo?: string; casualties?: string[] }
   | { type: "placeUnit"; gameId: string; unit: string; territory: string }
-  | { type: "chat"; gameId: string; text: string };
+  | { type: "chat"; gameId: string; text: string }
+  | { type: "quitGame"; gameId: string };
 
 export interface LobbyGame {
   id: string;
@@ -29,4 +30,5 @@ export type ServerMsg =
   | { type: "gameState"; state: GameState }
   | { type: "chat"; from: string; text: string; gameId: string }
   | { type: "error"; message: string }
-  | { type: "info"; message: string };
+  | { type: "info"; message: string }
+  | { type: "playerQuit"; gameId: string; power: PowerId; playerName: string };

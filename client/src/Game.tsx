@@ -12,13 +12,24 @@ interface GameProps {
   state: GameState;
   myPower: PowerId | null;
   error: string | null;
+  notice: string | null;
+  lastSaved: number | null;
+  onQuit: () => void;
 }
 
-export function Game({ net, gameId, state, myPower, error }: GameProps) {
+export function Game({ net, gameId, state, myPower, error, notice, lastSaved, onQuit }: GameProps) {
   const [selected, setSelected] = useState<string | null>(null);
   const [moveSrc, setMoveSrc] = useState<string | null>(null);
   const [moveUnits, setMoveUnits] = useState<Set<string>>(new Set());
   const [retreatPending, setRetreatPending] = useState<string | null>(null);
+  const [confirmingQuit, setConfirmingQuit] = useState(false);
+  const [now, setNow] = useState(Date.now());
+
+  // Tick every 30s so the "saved X minutes ago" label stays fresh.
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
 
   const reachable = useMemo<Set<string>>(() => {
     if (!moveSrc) return new Set();
@@ -29,11 +40,9 @@ export function Game({ net, gameId, state, myPower, error }: GameProps) {
       : 0;
     if (maxMove === 0) return new Set();
 
-    // Determine domain of selected units
     const domains = new Set([...moveUnits].map((id) => UNITS[state.units[id]?.unit ?? "infantry"].domain));
     const allLand = [...domains].every((d) => d === "land");
     const allSea = [...domains].every((d) => d === "sea");
-    const allAir = [...domains].every((d) => d === "air");
 
     const out = new Set<string>();
     const q: [string, number][] = [[moveSrc, 0]];
@@ -46,7 +55,6 @@ export function Game({ net, gameId, state, myPower, error }: GameProps) {
         const nTerrain = TERRITORY_MAP[n]?.terrain;
         if (allLand && nTerrain !== "land") continue;
         if (allSea && nTerrain !== "sea") continue;
-        // allAir or mixed: allow all terrain
         seen.add(n);
         out.add(n);
         q.push([n, d + 1]);
@@ -67,24 +75,18 @@ export function Game({ net, gameId, state, myPower, error }: GameProps) {
     }
     setSelected(id);
 
-    // Purchase / collect / place: just select for info
-    if (state.phase === "purchase" || state.phase === "collect" || state.phase === "place") {
-      return;
-    }
+    if (state.phase === "purchase" || state.phase === "collect" || state.phase === "place") return;
 
-    // Movement phases: pick origin then destination
     if (state.phase === "combatMove" || state.phase === "nonCombatMove") {
       if (!moveSrc) {
         const hasOwnUnit = Object.values(state.units).some((u) => u.territory === id && u.owner === myPower);
         if (hasOwnUnit) {
           setMoveSrc(id);
-          // Select all own units by default
           const own = Object.values(state.units).filter((u) => u.territory === id && u.owner === myPower);
           setMoveUnits(new Set(own.map((u) => u.id)));
         }
       } else {
         if (id === moveSrc) { setMoveSrc(null); setMoveUnits(new Set()); return; }
-        // Build shortest path in domain-appropriate graph (BFS — simple).
         const path = bfsPath(moveSrc, id);
         if (!path) return;
         const unitIds = [...moveUnits];
@@ -113,8 +115,39 @@ export function Game({ net, gameId, state, myPower, error }: GameProps) {
     net.send({ type: "placeUnit", gameId, unit, territory });
   }
 
+  function savedLabel(): string {
+    if (!lastSaved) return "";
+    const secs = Math.floor((now - lastSaved) / 1000);
+    if (secs < 5) return "Saved";
+    if (secs < 60) return `Saved ${secs}s ago`;
+    return `Saved ${Math.floor(secs / 60)}m ago`;
+  }
+
   return (
     <div className="app">
+      {/* Quit confirmation overlay */}
+      {confirmingQuit && (
+        <div className="quit-overlay">
+          <div className="quit-dialog">
+            <div className="quit-title">Forfeit game?</div>
+            <div className="quit-body">
+              {myPower
+                ? `You will surrender as ${POWERS[myPower].name}. Your territories remain on the map — opponents can still attack them.`
+                : "You will leave this game."}
+            </div>
+            <div className="quit-actions">
+              <button className="btn" onClick={() => setConfirmingQuit(false)}>Cancel</button>
+              <button
+                className="btn danger"
+                onClick={() => { setConfirmingQuit(false); onQuit(); }}
+              >
+                Yes, forfeit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="board-wrap">
         <Board
           state={state}
@@ -144,17 +177,29 @@ export function Game({ net, gameId, state, myPower, error }: GameProps) {
             Retreat from <b>{TERRITORY_MAP[retreatPending]?.name ?? retreatPending}</b> · click destination territory to retreat
           </div>
         )}
-        {error && <div className="toast">{error}</div>}
+        {error && <div className="toast toast-error">{error}</div>}
+        {notice && !error && <div className="toast toast-notice">{notice}</div>}
         {state.winner && (
-          <div className="toast" style={{ background: "#0f2a18", color: "#cfe", borderColor: "#2a5a3a" }}>
+          <div className="toast toast-victory">
             {state.winner === "axis" ? "AXIS VICTORY" : "ALLIES VICTORY"}
           </div>
         )}
       </div>
+
       <div className="side">
         <div className="header">
           <span className="brand">Axis &amp; Allies</span>
+          <span className="save-status">{savedLabel()}</span>
           <span className="turn">Game {gameId}</span>
+          {!state.winner && (
+            <button
+              className="btn danger quit-btn"
+              title="Forfeit and leave this game"
+              onClick={() => setConfirmingQuit(true)}
+            >
+              Quit
+            </button>
+          )}
         </div>
         <Panel
           state={state}

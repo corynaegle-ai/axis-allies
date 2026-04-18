@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { GameState, LobbyGame, PowerId, ServerMsg } from "@aa/shared";
+import { POWERS } from "@aa/shared";
 import { Net } from "./net.js";
 import { Lobby } from "./Lobby.js";
 import { Game } from "./Game.js";
@@ -28,6 +29,13 @@ export function App() {
   const [state, setState] = useState<GameState | null>(null);
   const [gameId, setGameId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [lastSaved, setLastSaved] = useState<number | null>(null);
+
+  function showNotice(msg: string, durationMs = 5000) {
+    setNotice(msg);
+    setTimeout(() => setNotice(null), durationMs);
+  }
 
   useEffect(() => {
     const unsub = net.on((msg: ServerMsg) => {
@@ -42,13 +50,20 @@ export function App() {
         case "gameState":
           setState(msg.state);
           setGameId(msg.state.id);
+          setLastSaved(Date.now());
           break;
         case "error":
           setError(msg.message);
           setTimeout(() => setError(null), 3000);
           break;
         case "info":
-          // could show a toast
+          showNotice(msg.message);
+          break;
+        case "playerQuit":
+          showNotice(
+            `${msg.playerName} (${POWERS[msg.power].name}) has forfeited.`,
+            7000,
+          );
           break;
       }
     });
@@ -80,5 +95,20 @@ export function App() {
     );
   }
 
-  return <Game net={net} gameId={gameId} state={state} myPower={myPower} error={error} />;
+  return (
+    <Game
+      net={net}
+      gameId={gameId}
+      state={state}
+      myPower={myPower}
+      error={error}
+      notice={notice}
+      lastSaved={lastSaved}
+      onQuit={() => {
+        net.send({ type: "quitGame", gameId });
+        setState(null);
+        setGameId(null);
+      }}
+    />
+  );
 }

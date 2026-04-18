@@ -10,6 +10,8 @@ export interface Room {
   players: Map<string, { name: string; power?: PowerId }>;
   sockets: Set<WebSocket>;
   started: boolean;
+  /** Powers whose human controllers have forfeited — their turns are auto-skipped. */
+  quitPowers: Set<PowerId>;
 }
 
 export class Lobby {
@@ -34,6 +36,7 @@ export class Lobby {
     const room: Room = {
       id, name, state: null,
       players: new Map(), sockets: new Set(), started: false,
+      quitPowers: new Set(),
     };
     this.rooms.set(id, room);
     return room;
@@ -81,6 +84,9 @@ export class Lobby {
       ),
       sockets: new Set(),
       started: true,
+      quitPowers: new Set(
+        players.filter((p) => p.status === "quit").map((p) => p.power),
+      ),
     };
     this.rooms.set(gameId, room);
     // Restore session stubs so players can reconnect with their sessionId.
