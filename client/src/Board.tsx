@@ -1,5 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { TERRITORIES, TERRITORY_MAP, POWERS, UNITS, type GameState, type PowerId, type UnitId, type UnitStack } from "@aa/shared";
+import {
+  TERRITORIES, TERRITORY_MAP, POWERS, UNITS, TERRITORY_GEO,
+  type GameState, type PowerId, type UnitId, type UnitStack, type Territory,
+} from "@aa/shared";
 import { Piece } from "./pieces.js";
 import "./board.css";
 
@@ -12,15 +15,20 @@ interface BoardProps {
   onTerritoryClick: (id: string) => void;
 }
 
-// World dimensions match the map image exactly.
-const WORLD_W = 2048;
-const WORLD_H = 910;
+// TripleA native map dimensions — matches map-aa.png and map-geo.ts coordinates.
+const WORLD_W = 3500;
+const WORLD_H = 2000;
 
-// Default viewport shows the full map.
 const HOME_VIEWPORT = { x: 0, y: 0, scale: 1.0 };
 
-// Pan damping: <1 means the map moves slower than the mouse (more control, less overshoot).
 const PAN_SPEED = 0.45;
+
+// Prefer geo centroid; fall back to scaling old 2048×910 coords to new canvas.
+function getCenter(t: Territory): [number, number] {
+  const geo = TERRITORY_GEO[t.id];
+  if (geo) return geo.centroid;
+  return [Math.round(t.x * (WORLD_W / 2048)), Math.round(t.y * (WORLD_H / 910))];
+}
 
 export function Board(props: BoardProps) {
   const { state, myPower, selectedTerritory, reachable, onTerritoryClick } = props;
@@ -29,7 +37,6 @@ export function Board(props: BoardProps) {
   const [viewport, setViewport] = useState({ ...HOME_VIEWPORT });
   const [drag, setDrag] = useState<{ ox: number; oy: number; x: number; y: number } | null>(null);
 
-  // Pan — PAN_SPEED damps the world delta so the map tracks more slowly than the mouse.
   function onPointerDown(e: React.PointerEvent) {
     if ((e.target as Element).closest("[data-territory]") || (e.target as Element).closest("[data-stack]")) return;
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
@@ -59,8 +66,7 @@ export function Board(props: BoardProps) {
     const svg = svgRef.current;
     if (!svg) return;
     const { width: sw, height: sh } = svg.getBoundingClientRect();
-    const mx = sw / 2;
-    const my = sh / 2;
+    const mx = sw / 2, my = sh / 2;
     const newScale = Math.min(2.2, viewport.scale * 1.3);
     const wx = viewport.x + mx / viewport.scale;
     const wy = viewport.y + my / viewport.scale;
@@ -71,38 +77,27 @@ export function Board(props: BoardProps) {
     const svg = svgRef.current;
     if (!svg) return;
     const { width: sw, height: sh } = svg.getBoundingClientRect();
-    const mx = sw / 2;
-    const my = sh / 2;
-    const newScale = Math.max(0.25, viewport.scale / 1.3);
+    const mx = sw / 2, my = sh / 2;
+    const newScale = Math.max(0.15, viewport.scale / 1.3);
     const wx = viewport.x + mx / viewport.scale;
     const wy = viewport.y + my / viewport.scale;
     setViewport({ scale: newScale, x: wx - mx / newScale, y: wy - my / newScale });
   }
 
-  // Zoom (wheel)
   function onWheel(e: React.WheelEvent) {
     e.preventDefault();
     const svg = svgRef.current!;
     const rect = svg.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
     const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
-    const newScale = Math.max(0.25, Math.min(2.2, viewport.scale * factor));
-    // zoom toward cursor:
+    const newScale = Math.max(0.15, Math.min(2.2, viewport.scale * factor));
     const wx = viewport.x + mx / viewport.scale;
     const wy = viewport.y + my / viewport.scale;
-    setViewport({
-      scale: newScale,
-      x: wx - mx / newScale,
-      y: wy - my / newScale,
-    });
+    setViewport({ scale: newScale, x: wx - mx / newScale, y: wy - my / newScale });
   }
 
-  const vbw = WORLD_W;
-  const vbh = WORLD_H;
-  const viewBox = `${viewport.x} ${viewport.y} ${vbw / viewport.scale} ${vbh / viewport.scale}`;
+  const viewBox = `${viewport.x} ${viewport.y} ${WORLD_W / viewport.scale} ${WORLD_H / viewport.scale}`;
 
-  // Group units by territory → owner → unit type (for stacking display).
   const stacksByTerritory = useMemo(() => {
     const m: Record<string, Record<PowerId, Partial<Record<UnitId, UnitStack[]>>>> = {};
     for (const u of Object.values(state.units)) {
@@ -128,65 +123,98 @@ export function Board(props: BoardProps) {
       onWheel={onWheel}
     >
       <defs>
-        {/* Drop-shadow for territory markers */}
         <filter id="land-shadow" x="-20%" y="-20%" width="140%" height="140%">
-          <feGaussianBlur in="SourceAlpha" stdDeviation="1.5" />
-          <feOffset dx="1" dy="1.5" result="offsetblur" />
-          <feComponentTransfer><feFuncA type="linear" slope="0.6" /></feComponentTransfer>
+          <feGaussianBlur in="SourceAlpha" stdDeviation="2" />
+          <feOffset dx="1.5" dy="2" result="offsetblur" />
+          <feComponentTransfer><feFuncA type="linear" slope="0.5" /></feComponentTransfer>
           <feMerge>
             <feMergeNode />
             <feMergeNode in="SourceGraphic" />
           </feMerge>
         </filter>
+
+        {/* Gradient fills for land territories by power */}
+        {(["ru","de","uk","jp","us","neutral"] as const).map(code => (
+          <linearGradient key={code} id={`land-${code}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={landGradientTop(code)} stopOpacity="0.82" />
+            <stop offset="100%" stopColor={landGradientBot(code)} stopOpacity="0.72" />
+          </linearGradient>
+        ))}
       </defs>
 
-      {/* Map image background */}
-      <image href="/map.png" x="0" y="0" width={WORLD_W} height={WORLD_H} />
+      {/* TripleA base terrain map — ocean and land base colors */}
+      <image href="/map-aa.png" x="0" y="0" width={WORLD_W} height={WORLD_H} />
 
-      {/* Territory markers — semi-transparent ownership indicators over the image */}
+      {/* Territory polygons (land) and zone markers (sea) */}
       {TERRITORIES.map((t) => {
+        const geo = TERRITORY_GEO[t.id];
+        const center = getCenter(t);
         const owner = state.territories[t.id]?.owner ?? null;
         const ownerCls = owner ? ownerShort(owner) : "neutral";
         const isCap = owner != null && POWERS[owner].capital === t.id;
         const isSelected = selectedTerritory === t.id;
         const isReach = reachable.has(t.id);
-        const r = t.terrain === "land" ? 14 : 11;
+
         return (
           <g key={t.id} data-territory={t.id}
              onClick={(e) => { e.stopPropagation(); onTerritoryClick(t.id); }}
              style={{ cursor: "pointer" }}>
-            {t.terrain === "land" ? (
-              <polygon
-                className={`territory land ${ownerCls} ${isSelected ? "selected" : ""} ${isReach ? "reachable" : ""}`}
-                points={hexPoints(t.x, t.y, r)}
-                filter="url(#land-shadow)"
-                opacity="0.72"
-              />
+
+            {geo ? (
+              // Actual polygon shape from TripleA geometry data
+              geo.polygons.map((pts, idx) => (
+                <polygon
+                  key={idx}
+                  className={`territory ${t.terrain} ${ownerCls}${isSelected ? " selected" : ""}${isReach ? " reachable" : ""}`}
+                  points={pts}
+                  filter={t.terrain === "land" ? "url(#land-shadow)" : undefined}
+                />
+              ))
             ) : (
-              <ellipse
-                className={`territory sea ${isSelected ? "selected" : ""} ${isReach ? "reachable" : ""}`}
-                cx={t.x} cy={t.y} rx={r} ry={r * 0.72}
-                opacity="0.6"
+              // Fallback marker for territories not yet in geo data
+              t.terrain === "land" ? (
+                <polygon
+                  className={`territory land ${ownerCls}${isSelected ? " selected" : ""}${isReach ? " reachable" : ""}`}
+                  points={hexPoints(center[0], center[1], 28)}
+                  filter="url(#land-shadow)"
+                  opacity="0.72"
+                />
+              ) : (
+                <ellipse
+                  className={`territory sea${isSelected ? " selected" : ""}${isReach ? " reachable" : ""}`}
+                  cx={center[0]} cy={center[1]} rx={28} ry={20}
+                  opacity="0.5"
+                />
+              )
+            )}
+
+            {isCap && (
+              <circle
+                className="capital-marker"
+                cx={center[0]} cy={center[1] - (geo ? 20 : 14)}
+                r={geo ? 6 : 3.5}
               />
             )}
-            {isCap && <circle className="capital-marker" cx={t.x} cy={t.y - 12} r={3.5} />}
 
-            {/* Unit stacks: arranged in a small grid below the marker */}
-            {renderStacks(t.id, t.x, t.y + 8, stacksByTerritory[t.id])}
+            {renderStacks(t.id, center[0], center[1], stacksByTerritory[t.id], !!geo)}
           </g>
         );
       })}
 
-      {/* Active power marker at their capital */}
+      {/* Animated ring on active power's capital */}
       {(() => {
         const cap = POWERS[state.activePower].capital;
         const t = TERRITORY_MAP[cap];
         if (!t) return null;
-        return <circle cx={t.x} cy={t.y - 18} r={8} fill="none" stroke="#ffd05b" strokeWidth="2" strokeDasharray="3 3">
-          <animate attributeName="r" values="8;12;8" dur="1.6s" repeatCount="indefinite" />
-        </circle>;
+        const [cx, cy] = getCenter(t);
+        return (
+          <circle cx={cx} cy={cy - 20} r={14} fill="none" stroke="#ffd05b" strokeWidth="2.5" strokeDasharray="4 4">
+            <animate attributeName="r" values="14;20;14" dur="1.6s" repeatCount="indefinite" />
+          </circle>
+        );
       })()}
     </svg>
+
     <div className="map-controls">
       <button className="map-btn" onClick={zoomIn} title="Zoom in">
         <span>+</span>
@@ -216,6 +244,13 @@ function ownerShort(id: PowerId): string {
   return { russia: "ru", germany: "de", uk: "uk", japan: "jp", usa: "us" }[id];
 }
 
+function landGradientTop(code: string): string {
+  return { ru: "#c4453a", de: "#7a7a7a", uk: "#d4b262", jp: "#e8a040", us: "#4e8a6c", neutral: "#b8a870" }[code] ?? "#888";
+}
+function landGradientBot(code: string): string {
+  return { ru: "#8c2826", de: "#505050", uk: "#9e7830", jp: "#a0601a", us: "#2e5a3e", neutral: "#7a7255" }[code] ?? "#555";
+}
+
 function hexPoints(cx: number, cy: number, r: number): string {
   const pts: string[] = [];
   for (let i = 0; i < 6; i++) {
@@ -230,6 +265,7 @@ function renderStacks(
   cx: number,
   cy: number,
   byOwner: Record<PowerId, Partial<Record<UnitId, UnitStack[]>>> | undefined,
+  hasGeo: boolean,
 ): React.ReactNode {
   if (!byOwner) return null;
   const entries: { owner: PowerId; unit: UnitId; count: number; damaged: boolean }[] = [];
@@ -239,20 +275,23 @@ function renderStacks(
     }
   }
   entries.sort((a, b) => {
-    // Factories & AA at the back
     const prio = (u: UnitId) => (u === "factory" ? 0 : u === "aa" ? 1 : 2);
     return prio(b.unit) - prio(a.unit);
   });
+
   const perRow = 4;
-  const cellW = 24;
-  const cellH = 24;
+  const cellW = hasGeo ? 30 : 24;
+  const cellH = hasGeo ? 30 : 24;
+  // Offset the stack below the territory center
+  const startY = cy + (hasGeo ? 12 : 8);
+
   return (
     <g data-stack={tid}>
       {entries.map((e, i) => {
         const col = i % perRow;
         const row = Math.floor(i / perRow);
         const x = cx + (col - (perRow - 1) / 2) * cellW;
-        const y = cy + row * cellH;
+        const y = startY + row * cellH;
         const power = POWERS[e.owner];
         return (
           <g key={`${e.owner}-${e.unit}-${i}`} transform={`translate(${x - 12}, ${y - 12})`}>
@@ -275,4 +314,3 @@ function renderStacks(
     </g>
   );
 }
-
