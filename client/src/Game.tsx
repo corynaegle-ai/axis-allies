@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   GameState, POWERS, POWER_ORDER, PowerId, TERRITORY_MAP, UnitId, UNITS, isAir, isLand, isSea,
+  type AuthUser,
 } from "@aa/shared";
 import { Board } from "./Board.js";
 import { Panel } from "./Panel.js";
@@ -12,13 +13,15 @@ interface GameProps {
   gameId: string;
   state: GameState;
   myPower: PowerId | null;
+  authUser: AuthUser | null;
   error: string | null;
   notice: string | null;
   lastSaved: number | null;
+  onLogout: () => void;
   onQuit: () => void;
 }
 
-export function Game({ net, gameId, state, myPower, error, notice, lastSaved, onQuit }: GameProps) {
+export function Game({ net, gameId, state, myPower, authUser, error, notice, lastSaved, onLogout, onQuit }: GameProps) {
   const [selected, setSelected] = useState<string | null>(null);
   const [moveSrc, setMoveSrc] = useState<string | null>(null);
   const [moveUnits, setMoveUnits] = useState<string[]>([]);
@@ -215,6 +218,14 @@ export function Game({ net, gameId, state, myPower, error, notice, lastSaved, on
           <span className="brand">Axis &amp; Allies</span>
           <span className="save-status">{savedLabel()}</span>
           <span className="turn">Game {gameId}</span>
+          {authUser && (
+            <span className="profile-chip" title={authUser.email}>
+              {authUser.displayName}
+            </span>
+          )}
+          <button className="btn logout-btn" onClick={onLogout} title="Log out">
+            Log out
+          </button>
           {!state.winner && (
             <button
               className="btn danger quit-btn"

@@ -120,12 +120,22 @@ export function App() {
     );
   }
 
+  function handleLogout() {
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    localStorage.removeItem(STORAGE);
+    setAuthUser(null);
+    setState(null);
+    setGameId(null);
+  }
+
   if (!state || !gameId) {
     return (
       <Lobby
         net={net}
         games={games}
         myName={sessionName}
+        authUser={authUser}
+        onLogout={handleLogout}
         setName={(s) => {
           setSessionName(s);
           net.send({ type: "hello", name: s, sessionId });
@@ -140,9 +150,11 @@ export function App() {
       gameId={gameId}
       state={state}
       myPower={myPower}
+      authUser={authUser}
       error={error}
       notice={notice}
       lastSaved={lastSaved}
+      onLogout={handleLogout}
       onQuit={() => {
         net.send({ type: "quitGame", gameId });
         setState(null);

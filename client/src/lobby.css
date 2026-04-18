@@ -546,3 +546,49 @@
     gap: 8px;
   }
 }
+
+/* ---------- Profile row in Commander Identity panel ---------- */
+.lobby-profile-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+}
+.lobby-profile-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.lobby-profile-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lobby-profile-email {
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lobby-btn-logout {
+  flex-shrink: 0;
+  font-size: 12px;
+  padding: 5px 10px;
+  background: rgba(224, 90, 90, 0.12);
+  border: 1px solid rgba(224, 90, 90, 0.35);
+  color: #f3a8a8;
+  border-radius: 4px;
+}
+.lobby-btn-logout:hover {
+  background: rgba(224, 90, 90, 0.22);
+}

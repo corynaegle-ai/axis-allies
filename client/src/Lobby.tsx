@@ -383,11 +383,15 @@ export function Lobby({
   net,
   games,
   myName,
+  authUser,
+  onLogout,
   setName,
 }: {
   net: Net;
   games: LobbyGame[];
   myName: string;
+  authUser: { displayName: string; email: string } | null;
+  onLogout: () => void;
   setName: (s: string) => void;
 }) {
   const [newGame, setNewGame] = useState("Showdown");
@@ -429,13 +433,24 @@ export function Lobby({
         {/* ---------- Commander identity ---------- */}
         <section className="lobby-panel">
           <h2 className="lobby-panel-title">Commander Identity</h2>
+          {authUser && (
+            <div className="lobby-profile-row">
+              <div className="lobby-profile-info">
+                <span className="lobby-profile-name">{authUser.displayName}</span>
+                <span className="lobby-profile-email">{authUser.email}</span>
+              </div>
+              <button className="lobby-btn lobby-btn-logout" onClick={onLogout}>
+                Log out
+              </button>
+            </div>
+          )}
           <div className="lobby-field-row">
             <input
               type="text"
               className="lobby-input"
               value={myName}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Your name, Commander"
+              placeholder="Display name in game"
             />
             <button
               className="lobby-btn"
