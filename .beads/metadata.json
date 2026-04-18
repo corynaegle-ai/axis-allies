@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "axis_allies",
+  "project_id": "da97656c-36eb-4c75-8778-781d02e35684"
+}
