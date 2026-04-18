@@ -3,13 +3,18 @@ import http from "node:http";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import fs from "node:fs";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import { nanoid } from "nanoid";
 import { ClientMsg, ServerMsg, POWERS, POWER_ORDER } from "@aa/shared";
 import { Lobby } from "./lobby.js";
 import { advancePhase, applyMove, applyPlace, applyPurchase, applyResolveBattle } from "./game.js";
 import {
   openDb, saveGame, createGameRecord, addGamePlayer, markPlayerQuit,
-  upsertPlayer, loadActiveGames,
+  upsertPlayer, loadActiveGames, createUser, getUserByEmail, getUserById,
 } from "./db.js";
+
+const JWT_SECRET = process.env.JWT_SECRET ?? "aa-dev-secret-change-in-prod";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -25,7 +30,91 @@ for (const saved of loadActiveGames()) {
   console.log(`[db] Restored game ${saved.gameId} (turn ${saved.state.turn}, ${saved.players.length} players)`);
 }
 
-const server = http.createServer((req, res) => {
+function sendJson(res: http.ServerResponse, status: number, data: unknown): void {
+  const body = JSON.stringify(data);
+  res.writeHead(status, { "Content-Type": "application/json" });
+  res.end(body);
+}
+
+function readBody(req: http.IncomingMessage): Promise<string> {
+  return new Promise((resolve) => {
+    let body = "";
+    req.on("data", (chunk) => { body += chunk; });
+    req.on("end", () => resolve(body));
+  });
+}
+
+const server = http.createServer(async (req, res) => {
+  const method = req.method ?? "GET";
+  const url = (req.url ?? "/").split("?")[0];
+
+  // ── Auth routes ──────────────────────────────────────────────────────────
+  if (url === "/api/auth/signup" && method === "POST") {
+    try {
+      const raw = await readBody(req);
+      const { email, password, displayName } = JSON.parse(raw) as {
+        email?: string; password?: string; displayName?: string;
+      };
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return sendJson(res, 400, { error: "Invalid email address." });
+      }
+      if (!password || password.length < 8) {
+        return sendJson(res, 400, { error: "Password must be at least 8 characters." });
+      }
+      if (!displayName || displayName.length < 2 || displayName.length > 30) {
+        return sendJson(res, 400, { error: "Display name must be 2-30 characters." });
+      }
+      if (getUserByEmail(email)) {
+        return sendJson(res, 409, { error: "Email already registered." });
+      }
+      const passwordHash = await bcrypt.hash(password, 10);
+      const id = nanoid();
+      const user = createUser(id, email, passwordHash, displayName);
+      const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, { expiresIn: "30d" });
+      return sendJson(res, 200, { token, user: { id: user.id, email: user.email, displayName: user.display_name } });
+    } catch (e) {
+      console.error("[auth/signup]", e);
+      return sendJson(res, 500, { error: "Internal server error." });
+    }
+  }
+
+  if (url === "/api/auth/login" && method === "POST") {
+    try {
+      const raw = await readBody(req);
+      const { email, password } = JSON.parse(raw) as { email?: string; password?: string };
+      const user = email ? getUserByEmail(email) : undefined;
+      if (!user || !password || !(await bcrypt.compare(password, user.password_hash))) {
+        return sendJson(res, 401, { error: "Invalid email or password." });
+      }
+      const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, { expiresIn: "30d" });
+      return sendJson(res, 200, { token, user: { id: user.id, email: user.email, displayName: user.display_name } });
+    } catch (e) {
+      console.error("[auth/login]", e);
+      return sendJson(res, 500, { error: "Internal server error." });
+    }
+  }
+
+  if (url === "/api/auth/me" && method === "GET") {
+    try {
+      const authHeader = req.headers["authorization"] ?? "";
+      const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+      if (!token) return sendJson(res, 401, { error: "No token provided." });
+      let payload: { userId: string; email: string };
+      try {
+        payload = jwt.verify(token, JWT_SECRET) as { userId: string; email: string };
+      } catch {
+        return sendJson(res, 401, { error: "Invalid or expired token." });
+      }
+      const user = getUserById(payload.userId);
+      if (!user) return sendJson(res, 401, { error: "User not found." });
+      return sendJson(res, 200, { id: user.id, email: user.email, displayName: user.display_name });
+    } catch (e) {
+      console.error("[auth/me]", e);
+      return sendJson(res, 500, { error: "Internal server error." });
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   if (!fs.existsSync(CLIENT_DIST)) {
     res.writeHead(200, { "Content-Type": "text/plain" });
     res.end("Axis & Allies server is running. Run `npm run dev:client` separately, or build the client.");

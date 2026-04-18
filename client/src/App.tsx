@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import type { GameState, LobbyGame, PowerId, ServerMsg } from "@aa/shared";
+import type { AuthUser, GameState, LobbyGame, PowerId, ServerMsg } from "@aa/shared";
 import { POWERS } from "@aa/shared";
 import { Net } from "./net.js";
 import { Lobby } from "./Lobby.js";
 import { Game } from "./Game.js";
+import { AuthScreen } from "./AuthScreen.js";
 
 const STORAGE = "aa.session";
+const AUTH_TOKEN_KEY = "aa.auth.token";
 
 function loadSession(): { id?: string; name: string } {
   try {
@@ -23,6 +25,9 @@ export function App() {
   if (!netRef.current) netRef.current = new Net();
   const net = netRef.current;
 
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
   const [sessionName, setSessionName] = useState<string>(() => loadSession().name);
   const [sessionId, setSessionId] = useState<string | undefined>(() => loadSession().id);
   const [games, setGames] = useState<LobbyGame[]>([]);
@@ -36,6 +41,25 @@ export function App() {
     setNotice(msg);
     setTimeout(() => setNotice(null), durationMs);
   }
+
+  // On mount: validate stored token or clear it
+  useEffect(() => {
+    const token = localStorage.getItem(AUTH_TOKEN_KEY);
+    if (!token) {
+      setAuthLoading(false);
+      return;
+    }
+    fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.ok ? r.json() : Promise.reject(r))
+      .then((user: AuthUser) => {
+        setAuthUser(user);
+        setSessionName(user.displayName);
+      })
+      .catch(() => {
+        localStorage.removeItem(AUTH_TOKEN_KEY);
+      })
+      .finally(() => setAuthLoading(false));
+  }, []);
 
   useEffect(() => {
     const unsub = net.on((msg: ServerMsg) => {
@@ -68,7 +92,7 @@ export function App() {
       }
     });
     net.connect();
-    net.send({ type: "hello", name: sessionName, sessionId });
+    net.send({ type: "hello", name: authUser?.displayName ?? sessionName, sessionId });
     return unsub;
   }, []);
 
@@ -80,6 +104,21 @@ export function App() {
   }, [games, gameId, sessionId, state]);
 
   useEffect(() => { saveSession({ id: sessionId, name: sessionName }); }, [sessionId, sessionName]);
+
+  if (authLoading) {
+    return null; // brief flash while token is validated
+  }
+
+  if (!authUser) {
+    return (
+      <AuthScreen
+        onAuth={(user) => {
+          setAuthUser(user);
+          setSessionName(user.displayName);
+        }}
+      />
+    );
+  }
 
   if (!state || !gameId) {
     return (
