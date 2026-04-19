@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import type { LobbyGame, PowerId } from "@aa/shared";
 import { POWERS, POWER_ORDER } from "@aa/shared";
 import { Net } from "./net.js";
@@ -47,7 +47,6 @@ function HeroIllustration() {
   );
 }
 
-/* Corner star ornament for the hero panel */
 function CornerStar({ pos }: { pos: "tl" | "tr" | "bl" | "br" }) {
   return (
     <svg className={`hero-corner ${pos}`} viewBox="0 0 24 24" aria-hidden="true">
@@ -75,6 +74,33 @@ function PowerBadge({ power }: { power: PowerId }) {
   );
 }
 
+function GamePlayers({
+  game,
+  mySessionId,
+}: {
+  game: LobbyGame;
+  mySessionId: string | undefined;
+}) {
+  return (
+    <div className="game-players">
+      {game.players.length === 0 && <span className="none">No commanders yet</span>}
+      {game.players.map((p) => {
+        const pow = p.power ? POWERS[p.power as PowerId] : null;
+        return (
+          <span
+            key={p.sessionId}
+            className={"player-chip" + (p.sessionId === mySessionId ? " mine" : "")}
+            style={{ ["--chip-color" as string]: pow?.color ?? "#555" } as React.CSSProperties}
+          >
+            <span className="player-chip-dot" />
+            {p.name}{pow ? ` · ${pow.name}` : ""}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 /* -------------------------------------------------------------------------
    Main Lobby component
    ------------------------------------------------------------------------- */
@@ -86,6 +112,8 @@ export function Lobby({
   authUser,
   onLogout,
   setName,
+  foundGame,
+  onClearFoundGame,
 }: {
   net: Net;
   games: LobbyGame[];
@@ -94,12 +122,25 @@ export function Lobby({
   authUser: { displayName: string; email: string } | null;
   onLogout: () => void;
   setName: (s: string) => void;
+  foundGame: LobbyGame | null;
+  onClearFoundGame: () => void;
 }) {
   const [newGameName, setNewGameName] = useState("Showdown");
   const [createPower, setCreatePower] = useState<PowerId>("russia");
   const [joinCode, setJoinCode] = useState("");
   const [joinPower, setJoinPower] = useState<PowerId>("russia");
-  const [foundGame, setFoundGame] = useState<LobbyGame | null>(null);
+
+  function handleLookup() {
+    if (!joinCode.trim()) return;
+    net.send({ type: "lookupGame", gameId: joinCode.trim() });
+  }
+
+  function handleJoinFound() {
+    if (!foundGame) return;
+    net.send({ type: "joinGame", gameId: foundGame.id, power: joinPower });
+    onClearFoundGame();
+    setJoinCode("");
+  }
 
   return (
     <div className="lobby-page">
@@ -165,9 +206,12 @@ export function Lobby({
           </div>
         </section>
 
-        {/* ---------- Create game ---------- */}
+        {/* ---------- Launch new campaign ---------- */}
         <section className="lobby-panel">
           <h2 className="lobby-panel-title">Launch a New Campaign</h2>
+          <p className="lobby-panel-hint">
+            Create a game and share the code with friends so they can join.
+          </p>
           <div className="lobby-field-row">
             <input
               type="text"
@@ -190,17 +234,75 @@ export function Lobby({
               className="lobby-btn primary"
               onClick={() => net.send({ type: "createGame", name: newGameName, power: createPower })}
             >
-              Create
+              Create &amp; Join
             </button>
           </div>
         </section>
 
-        {/* ---------- Games list ---------- */}
+        {/* ---------- Join by code ---------- */}
         <section className="lobby-panel">
-          <h2 className="lobby-panel-title">Active Theatres of War</h2>
+          <h2 className="lobby-panel-title">Join a Friend's Campaign</h2>
+          <p className="lobby-panel-hint">
+            Enter the game code your friend shared to find their campaign.
+          </p>
+          <div className="lobby-field-row">
+            <input
+              type="text"
+              className="lobby-input lobby-input-code"
+              value={joinCode}
+              onChange={(e) => { setJoinCode(e.target.value.toUpperCase()); onClearFoundGame(); }}
+              onKeyDown={(e) => e.key === "Enter" && handleLookup()}
+              placeholder="Game code (e.g. ABC123)"
+              maxLength={10}
+            />
+            <button className="lobby-btn" onClick={handleLookup}>
+              Look Up
+            </button>
+          </div>
+
+          {foundGame && (
+            <div className="found-game-card">
+              <div className="found-game-header">
+                <span className="found-game-name">{foundGame.name}</span>
+                <span className="game-id">#{foundGame.id}</span>
+                {foundGame.started && <span className="game-status-badge">In Progress</span>}
+              </div>
+              <GamePlayers game={foundGame} mySessionId={mySessionId} />
+              {!foundGame.started ? (
+                <div className="lobby-field-row" style={{ marginTop: 10 }}>
+                  <select
+                    className="lobby-select"
+                    value={joinPower}
+                    onChange={(e) => setJoinPower(e.target.value as PowerId)}
+                    aria-label="Choose power"
+                  >
+                    {POWER_ORDER.map((p) => (
+                      <option key={p} value={p} disabled={foundGame.players.some(pp => pp.power === p)}>
+                        {POWERS[p].name}
+                      </option>
+                    ))}
+                  </select>
+                  <button className="lobby-btn primary" onClick={handleJoinFound}>
+                    Join
+                  </button>
+                </div>
+              ) : (
+                <p className="lobby-panel-hint" style={{ marginTop: 8 }}>
+                  This campaign is already underway — you cannot join mid-game.
+                </p>
+              )}
+            </div>
+          )}
+        </section>
+
+        {/* ---------- My campaigns ---------- */}
+        <section className="lobby-panel">
+          <h2 className="lobby-panel-title">My Campaigns</h2>
 
           {games.length === 0 && (
-            <div className="games-empty">No campaigns underway &mdash; rally the troops.</div>
+            <div className="games-empty">
+              No campaigns yet &mdash; launch one above or join a friend's.
+            </div>
           )}
 
           <div className="games-list">
@@ -229,22 +331,7 @@ export function Lobby({
                     </button>
                   </div>
 
-                  <div className="game-players">
-                    {g.players.length === 0 && <span className="none">No commanders yet</span>}
-                    {g.players.map((p) => {
-                      const pow = p.power ? POWERS[p.power as PowerId] : null;
-                      return (
-                        <span
-                          key={p.sessionId}
-                          className={"player-chip" + (p.sessionId === mySessionId ? " mine" : "")}
-                          style={{ ["--chip-color" as string]: pow?.color ?? "#555" } as React.CSSProperties}
-                        >
-                          <span className="player-chip-dot" />
-                          {p.name}{pow ? ` · ${pow.name}` : ""}
-                        </span>
-                      );
-                    })}
-                  </div>
+                  <GamePlayers game={g} mySessionId={mySessionId} />
 
                   <div className="game-row-actions">
                     {isMember && g.started ? (
@@ -256,24 +343,28 @@ export function Lobby({
                       </button>
                     ) : !g.started ? (
                       <>
-                        <select
-                          className="lobby-select"
-                          value={joinPower}
-                          onChange={(e) => setJoinPower(e.target.value as PowerId)}
-                          aria-label="Choose power"
-                        >
-                          {POWER_ORDER.map((p) => (
-                            <option key={p} value={p} disabled={g.players.some(pp => pp.power === p)}>
-                              {POWERS[p].name}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          className="lobby-btn"
-                          onClick={() => net.send({ type: "joinGame", gameId: g.id, power: joinPower })}
-                        >
-                          Join
-                        </button>
+                        {!isMember && (
+                          <select
+                            className="lobby-select"
+                            value={joinPower}
+                            onChange={(e) => setJoinPower(e.target.value as PowerId)}
+                            aria-label="Choose power"
+                          >
+                            {POWER_ORDER.map((p) => (
+                              <option key={p} value={p} disabled={g.players.some(pp => pp.power === p)}>
+                                {POWERS[p].name}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                        {!isMember && (
+                          <button
+                            className="lobby-btn"
+                            onClick={() => net.send({ type: "joinGame", gameId: g.id, power: joinPower })}
+                          >
+                            Join
+                          </button>
+                        )}
                         <button
                           className="lobby-btn primary"
                           disabled={g.players.length === 0}
@@ -294,8 +385,8 @@ export function Lobby({
 
         {/* ---------- Footnote ---------- */}
         <div className="lobby-footnote">
-          Open this URL on multiple devices, each joining a different power, then
-          press <b>Start</b> to commence hostilities.
+          Create a campaign and share the game code &mdash; friends enter it under
+          &ldquo;Join a Friend's Campaign&rdquo; to find and join your game.
         </div>
       </div>
     </div>

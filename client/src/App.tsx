@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { AuthUser, GameState, LobbyGame, PowerId, ServerMsg } from "@aa/shared";
 import { POWERS } from "@aa/shared";
 import { Net } from "./net.js";
@@ -36,6 +36,7 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [lastSaved, setLastSaved] = useState<number | null>(null);
+  const [foundGame, setFoundGame] = useState<LobbyGame | null>(null);
 
   function showNotice(msg: string, durationMs = 5000) {
     setNotice(msg);
@@ -82,6 +83,9 @@ export function App() {
           break;
         case "info":
           showNotice(msg.message);
+          break;
+        case "gameFound":
+          setFoundGame(msg.game);
           break;
         case "playerQuit":
           showNotice(
@@ -137,6 +141,8 @@ export function App() {
         mySessionId={sessionId}
         authUser={authUser}
         onLogout={handleLogout}
+        foundGame={foundGame}
+        onClearFoundGame={() => setFoundGame(null)}
         setName={(s) => {
           setSessionName(s);
           net.send({ type: "hello", name: s, sessionId });
