@@ -115,8 +115,8 @@
 
 /* ---------- Map controls (zoom buttons) ---------- */
 .map-controls {
-  position: absolute;
-  right: 14px;
+  position: fixed;
+  right: 374px;
   bottom: 14px;
   display: flex;
   gap: 6px;
