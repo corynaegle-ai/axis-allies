@@ -74,7 +74,7 @@ export function Globe() {
       height={SIZE}
       viewBox={`0 0 ${SIZE} ${SIZE}`}
       aria-label="Rotating globe"
-      style={{ display: "block" }}
+      style={{ display: "block", overflow: "visible" }}
     >
       <defs>
         <radialGradient id="ocean-grad" cx="38%" cy="35%" r="65%">
@@ -110,8 +110,7 @@ export function Globe() {
               key={id}
               d={d}
               fill={fill}
-              stroke="rgba(0,0,0,0.4)"
-              strokeWidth={0.4}
+              stroke="none"
             />
           );
         })}
