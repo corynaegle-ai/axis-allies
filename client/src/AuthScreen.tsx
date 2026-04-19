@@ -217,7 +217,7 @@ function HeroScene() {
       </g>
 
       {/* ── Globe ── */}
-      <g transform="translate(300 195)" filter="url(#auth-shadow)">
+      <g transform="translate(300 195)">
         {/* Ocean sphere */}
         <circle r="112" fill="url(#auth-globe)" />
 
