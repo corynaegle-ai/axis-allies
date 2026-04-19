@@ -10,7 +10,7 @@ import { ClientMsg, ServerMsg, POWERS, POWER_ORDER } from "@aa/shared";
 import { Lobby } from "./lobby.js";
 import { advancePhase, applyMove, applyPlace, applyPurchase, applyResolveBattle } from "./game.js";
 import {
-  openDb, saveGame, createGameRecord, addGamePlayer, markPlayerQuit,
+  openDb, saveGame, createGameRecord, addGamePlayer, markPlayerQuit, markGameAbandoned,
   upsertPlayer, loadActiveGames, createUser, getUserByEmail, getUserById,
 } from "./db.js";
 
@@ -333,6 +333,23 @@ wss.on("connection", (ws) => {
             playerName: quittingName,
           });
           broadcastRoom(room.id, { type: "gameState", state: room.state });
+          broadcastLobby();
+          return;
+        }
+        case "rejoinGame": {
+          const room = lobby.rooms.get(msg.gameId);
+          if (!room?.state) return send(ws, { type: "error", message: "Game not found." });
+          room.sockets.add(ws);
+          send(ws, { type: "gameState", state: room.state });
+          return;
+        }
+        case "abandonGame": {
+          const room = lobby.rooms.get(msg.gameId);
+          if (!room) return;
+          markGameAbandoned(msg.gameId);
+          lobby.rooms.delete(msg.gameId);
+          // Clear any quit-session records for this game so it doesn't ghost-filter
+          for (const qs of lobby.quitSessions.values()) qs.delete(msg.gameId);
           broadcastLobby();
           return;
         }

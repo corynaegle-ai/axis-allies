@@ -255,6 +255,10 @@ export function markPlayerQuit(gameId: string, sessionId: string): void {
   `).run(Date.now(), gameId, sessionId);
 }
 
+export function markGameAbandoned(gameId: string): void {
+  db().prepare(`UPDATE games SET status = 'abandoned', updated_at = ? WHERE id = ?`).run(Date.now(), gameId);
+}
+
 export function countActivePlayers(gameId: string): number {
   const row = db().prepare(
     `SELECT COUNT(*) as cnt FROM game_players WHERE game_id = ? AND status = 'active'`

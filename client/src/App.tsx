@@ -134,6 +134,7 @@ export function App() {
         net={net}
         games={games}
         myName={sessionName}
+        mySessionId={sessionId}
         authUser={authUser}
         onLogout={handleLogout}
         setName={(s) => {

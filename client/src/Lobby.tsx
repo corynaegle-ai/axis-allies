@@ -82,6 +82,7 @@ export function Lobby({
   net,
   games,
   myName,
+  mySessionId,
   authUser,
   onLogout,
   setName,
@@ -89,6 +90,7 @@ export function Lobby({
   net: Net;
   games: LobbyGame[];
   myName: string;
+  mySessionId: string | undefined;
   authUser: { displayName: string; email: string } | null;
   onLogout: () => void;
   setName: (s: string) => void;
@@ -189,78 +191,91 @@ export function Lobby({
           )}
 
           <div className="games-list">
-            {games.map((g) => (
-              <div
-                key={g.id}
-                className={`game-row ${g.started ? "started" : ""}`}
-              >
-                <div className="game-name">
-                  <span>{g.name}</span>
-                  <span className="game-id">#{g.id}</span>
-                </div>
-
-                <div className="game-players">
-                  {g.players.length === 0 && <span className="none">No commanders yet</span>}
-                  {g.players.map((p) => {
-                    const pow = p.power ? POWERS[p.power as PowerId] : null;
-                    return (
-                      <span
-                        key={p.sessionId}
-                        className="player-chip"
-                        style={
-                          {
-                            ["--chip-color" as string]: pow?.color ?? "#555",
-                          } as React.CSSProperties
+            {games.map((g) => {
+              const isMember = g.players.some(p => p.sessionId === mySessionId);
+              return (
+                <div
+                  key={g.id}
+                  className={`game-row ${g.started ? "started" : ""}`}
+                >
+                  <div className="game-row-top">
+                    <div className="game-name">
+                      <span>{g.name}</span>
+                      <span className="game-id">#{g.id}</span>
+                    </div>
+                    <button
+                      className="lobby-btn abandon-btn"
+                      title="Abandon this game"
+                      onClick={() => {
+                        if (confirm(`Abandon game #${g.id}? This cannot be undone.`)) {
+                          net.send({ type: "abandonGame", gameId: g.id });
                         }
-                      >
-                        <span className="player-chip-dot" />
-                        {p.name}
-                        {pow ? ` · ${pow.name}` : ""}
-                      </span>
-                    );
-                  })}
-                </div>
-
-                <select
-                  className="lobby-select"
-                  value={selectedPower}
-                  onChange={(e) => setSelectedPower(e.target.value as PowerId)}
-                  aria-label="Choose power"
-                >
-                  {POWER_ORDER.map((p) => (
-                    <option
-                      key={p}
-                      value={p}
-                      disabled={g.players.some((pp) => pp.power === p)}
+                      }}
                     >
-                      {POWERS[p].name}
-                    </option>
-                  ))}
-                </select>
+                      ✕
+                    </button>
+                  </div>
 
-                <button
-                  className="lobby-btn"
-                  disabled={g.started}
-                  onClick={() =>
-                    net.send({
-                      type: "joinGame",
-                      gameId: g.id,
-                      power: selectedPower,
-                    })
-                  }
-                >
-                  Join
-                </button>
+                  <div className="game-players">
+                    {g.players.length === 0 && <span className="none">No commanders yet</span>}
+                    {g.players.map((p) => {
+                      const pow = p.power ? POWERS[p.power as PowerId] : null;
+                      return (
+                        <span
+                          key={p.sessionId}
+                          className={"player-chip" + (p.sessionId === mySessionId ? " mine" : "")}
+                          style={{ ["--chip-color" as string]: pow?.color ?? "#555" } as React.CSSProperties}
+                        >
+                          <span className="player-chip-dot" />
+                          {p.name}{pow ? ` · ${pow.name}` : ""}
+                        </span>
+                      );
+                    })}
+                  </div>
 
-                <button
-                  className="lobby-btn primary"
-                  disabled={g.started || g.players.length === 0}
-                  onClick={() => net.send({ type: "startGame", gameId: g.id })}
-                >
-                  {g.started ? "In Progress" : "Start"}
-                </button>
-              </div>
-            ))}
+                  <div className="game-row-actions">
+                    {isMember && g.started ? (
+                      <button
+                        className="lobby-btn primary"
+                        onClick={() => net.send({ type: "rejoinGame", gameId: g.id })}
+                      >
+                        Rejoin
+                      </button>
+                    ) : !g.started ? (
+                      <>
+                        <select
+                          className="lobby-select"
+                          value={selectedPower}
+                          onChange={(e) => setSelectedPower(e.target.value as PowerId)}
+                          aria-label="Choose power"
+                        >
+                          {POWER_ORDER.map((p) => (
+                            <option key={p} value={p} disabled={g.players.some(pp => pp.power === p)}>
+                              {POWERS[p].name}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          className="lobby-btn"
+                          onClick={() => net.send({ type: "joinGame", gameId: g.id, power: selectedPower })}
+                        >
+                          Join
+                        </button>
+                        <button
+                          className="lobby-btn primary"
+                          disabled={g.players.length === 0}
+                          onClick={() => net.send({ type: "startGame", gameId: g.id })}
+                        >
+                          Start
+                        </button>
+                      </>
+                    ) : (
+                      <span className="game-status-badge">In Progress</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </section>
 

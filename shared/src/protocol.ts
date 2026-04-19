@@ -15,7 +15,9 @@ export type ClientMsg =
   | { type: "resolveBattle"; gameId: string; territory: string; retreat?: boolean; retreatTo?: string; casualties?: string[] }
   | { type: "placeUnit"; gameId: string; unit: string; territory: string }
   | { type: "chat"; gameId: string; text: string }
-  | { type: "quitGame"; gameId: string };
+  | { type: "quitGame"; gameId: string }
+  | { type: "rejoinGame"; gameId: string }
+  | { type: "abandonGame"; gameId: string };
 
 export interface LobbyGame {
   id: string;
