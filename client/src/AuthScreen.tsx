@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
 import type { AuthUser } from "@aa/shared";
+import { Globe } from "./Globe.js";
+import { RU, DE, GB, JP, US } from "country-flag-icons/react/3x2";
 
 const AUTH_TOKEN_KEY = "aa.auth.token";
 
@@ -126,7 +128,52 @@ const ANIMATION_CSS = `
 `;
 
 /* ─────────────────────────────────────────────
-   SVG Hero Scene
+   Globe + flags overlay (replaces SVG globe)
+───────────────────────────────────────────── */
+const FLAG_DATA = [
+  { id: "russia", Flag: RU, color: "#7a2020" },
+  { id: "germany", Flag: DE, color: "#4a4a4a" },
+  { id: "uk", Flag: GB, color: "#1a3a6a" },
+  { id: "japan", Flag: JP, color: "#8a5010" },
+  { id: "usa", Flag: US, color: "#1a4a2a" },
+] as const;
+
+function AuthHeroGlobe() {
+  const left = FLAG_DATA.slice(0, 2);
+  const right = FLAG_DATA.slice(2);
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 14, justifyContent: "center" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {left.map(({ id, Flag, color }) => (
+          <div key={id} style={{
+            border: `2px solid ${color}`,
+            borderRadius: 3,
+            overflow: "hidden",
+            boxShadow: `0 0 10px ${color}88`,
+          }}>
+            <Flag style={{ width: 68, height: 45, display: "block" }} />
+          </div>
+        ))}
+      </div>
+      <Globe />
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {right.map(({ id, Flag, color }) => (
+          <div key={id} style={{
+            border: `2px solid ${color}`,
+            borderRadius: 3,
+            overflow: "hidden",
+            boxShadow: `0 0 10px ${color}88`,
+          }}>
+            <Flag style={{ width: 68, height: 45, display: "block" }} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   SVG Hero Scene (background: sky, rays, sea, soldiers)
 ───────────────────────────────────────────── */
 function HeroScene() {
   return (
@@ -146,12 +193,6 @@ function HeroScene() {
           <stop offset="0%" stopColor="#c9a227" stopOpacity="0.8" />
           <stop offset="40%" stopColor="#8b5e14" stopOpacity="0.35" />
           <stop offset="100%" stopColor="#c9a227" stopOpacity="0" />
-        </radialGradient>
-        {/* Globe — ocean blue */}
-        <radialGradient id="auth-globe" cx="38%" cy="35%" r="65%">
-          <stop offset="0%" stopColor="#1a3a52" />
-          <stop offset="55%" stopColor="#0d2030" />
-          <stop offset="100%" stopColor="#060e18" />
         </radialGradient>
         <linearGradient id="auth-fog1" x1="0%" y1="0%" x2="100%" y2="0%">
           <stop offset="0%" stopColor="#1a1610" stopOpacity="0" />
@@ -184,18 +225,6 @@ function HeroScene() {
           <feGaussianBlur stdDeviation="2" result="blur" />
           <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
         </filter>
-        {/* Clip continents to globe circle (local coords, center=0,0) */}
-        <clipPath id="auth-globe-clip">
-          <circle r="112" />
-        </clipPath>
-        {/* Clip US flag face: left pole, rotate(-30) local space */}
-        <clipPath id="flag-us-clip">
-          <polygon points="0,-140 80,-130 80,-85 0,-75" />
-        </clipPath>
-        {/* Clip German flag face: right pole, rotate(30) local space */}
-        <clipPath id="flag-de-clip">
-          <polygon points="4,-140 -76,-130 -76,-85 4,-75" />
-        </clipPath>
       </defs>
 
       {/* Sky */}
@@ -214,157 +243,6 @@ function HeroScene() {
               strokeLinecap="round" opacity={i % 2 === 0 ? 0.5 : 0.22} />
           );
         })}
-      </g>
-
-      {/* ── Globe ── */}
-      <g transform="translate(300 195)">
-        {/* Ocean sphere */}
-        <circle r="112" fill="url(#auth-globe)" />
-
-        {/* Longitude grid — longitude meridian ellipses only (no straight latitude lines) */}
-        <g fill="none" stroke="#4a8aaa" strokeWidth="0.55" opacity="0.28" clipPath="url(#auth-globe-clip)">
-          <ellipse rx="56" ry="112" />
-          <ellipse rx="97" ry="112" />
-          <ellipse rx="112" ry="112" />
-        </g>
-
-        {/* Continents — clipped to globe, realistic simplified shapes */}
-        <g fill="#b0a070" opacity="0.90" clipPath="url(#auth-globe-clip)" filter="url(#auth-glow)">
-          {/* ── North America ── */}
-          {/* Main body: broad Canada top, east coast curve, Gulf notch, Yucatan */}
-          <path d="
-            M -40,-72 C -54,-80 -72,-74 -78,-58
-            C -85,-43 -80,-26 -90,-10
-            C -96,4  -97,22 -88,32
-            C -80,42 -66,40 -60,28
-            C -56,20 -60,10 -62,0
-            C -64,-10 -56,-20 -50,-30
-            C -43,-40 -36,-52 -28,-58
-            C -20,-64 -28,-68 -40,-72 Z
-          " />
-          {/* Florida peninsula */}
-          <path d="M -62,0 C -67,12 -70,24 -63,30 C -59,34 -55,24 -57,12 Z" />
-          {/* Baja California sliver */}
-          <path d="M -90,-10 C -96,0 -100,10 -96,18 C -92,14 -90,4 -90,-10 Z" />
-          {/* Greenland */}
-          <path d="M -26,-78 C -16,-92 -2,-94 0,-82 C 2,-70 -10,-64 -20,-70 C -26,-74 -28,-76 -26,-78 Z" />
-
-          {/* ── South America ── */}
-          <path d="
-            M -64,28 C -58,32 -52,44 -50,58
-            C -48,72 -40,86 -30,90
-            C -20,94 -12,82 -16,68
-            C -20,54 -30,40 -42,34
-            C -50,30 -58,24 -64,28 Z
-          " />
-
-          {/* ── Europe ── */}
-          {/* Main body: Iberia, France/Germany, Italy */}
-          <path d="
-            M -10,-50 C 0,-58 16,-54 22,-44
-            C 27,-35 20,-24 10,-20
-            C 4,-18 0,-24 -3,-18
-            C -6,-12 -2,-4 4,0
-            C 0,4 -8,-2 -13,-15
-            C -17,-28 -15,-42 -10,-50 Z
-          " />
-          {/* Scandinavian peninsula */}
-          <path d="M 8,-52 C 12,-62 18,-62 17,-52 C 15,-43 9,-42 8,-52 Z" />
-          {/* Great Britain */}
-          <path d="M -16,-48 C -10,-56 -3,-53 -4,-44 C -5,-37 -13,-35 -16,-44 Z" />
-          {/* Ireland (tiny) */}
-          <path d="M -20,-46 C -17,-50 -13,-48 -15,-44 C -17,-41 -21,-42 -20,-46 Z" />
-
-          {/* ── Africa ── */}
-          <path d="
-            M -5,-28 C 8,-22 26,-14 30,2
-            C 34,18 30,42 22,60
-            C 14,76 4,84 -4,82
-            C -14,80 -20,64 -18,48
-            C -16,32 -8,20 -10,6
-            C -12,-6 -17,-22 -5,-28 Z
-          " />
-
-          {/* ── Asia ── */}
-          {/* Main Eurasian body */}
-          <path d="
-            M 10,-58 C 26,-70 54,-72 80,-56
-            C 98,-43 104,-22 90,-8
-            C 76,6 54,10 36,6
-            C 18,2 10,-10 15,-28
-            C 19,-45 2,-48 10,-58 Z
-          " />
-          {/* Arabian Peninsula */}
-          <path d="M 26,-8 C 34,-4 38,8 34,18 C 30,26 22,22 22,12 C 22,4 22,-6 26,-8 Z" />
-          {/* Indian subcontinent */}
-          <path d="M 56,-8 C 65,-3 70,10 66,24 C 62,35 50,33 48,20 C 46,8 48,-5 56,-8 Z" />
-          {/* Southeast Asia peninsula */}
-          <path d="M 74,-5 C 82,3 84,18 78,28 C 72,36 63,30 65,17 C 67,7 69,-3 74,-5 Z" />
-          {/* Japan (island chain — two small ovals) */}
-          <ellipse cx="97" cy="-36" rx="5" ry="10" transform="rotate(-20,97,-36)" />
-          <ellipse cx="104" cy="-22" rx="4" ry="8" transform="rotate(-20,104,-22)" />
-
-          {/* ── Australia ── */}
-          <path d="
-            M 62,38 C 76,33 94,37 98,52
-            C 101,64 93,75 78,74
-            C 64,73 57,62 59,49
-            C 60,44 60,40 62,38 Z
-          " />
-          {/* New Zealand hint */}
-          <ellipse cx="108" cy="68" rx="4" ry="8" transform="rotate(15,108,68)" />
-        </g>
-
-        {/* Globe rim */}
-        <circle r="112" fill="none" stroke="#c9a227" strokeWidth="2" />
-        {/* Specular highlight */}
-        <ellipse cx="-30" cy="-40" rx="28" ry="18" fill="white" opacity="0.04" />
-      </g>
-
-      {/* ── Crossed flags over globe ── */}
-      <g transform="translate(300 195)" filter="url(#auth-shadow)">
-
-        {/* ── American flag — left pole, tilted left ── */}
-        <g transform="rotate(-30)">
-          <rect x="-4" y="-140" width="4" height="210" fill="#5a3e12" />
-          <g clipPath="url(#flag-us-clip)">
-            {/* Red base */}
-            <rect x="0" y="-140" width="80" height="65" fill="#b22234" />
-            {/* 6 white stripes (stripes 2,4,6,8,10,12 from top) */}
-            {[1,3,5,7,9,11].map(i => (
-              <rect key={i} x="0" y={-140 + i * 5} width="80" height="5" fill="#ffffff" />
-            ))}
-            {/* Blue canton — 40% width × 7 stripes tall */}
-            <rect x="0" y="-140" width="32" height="35" fill="#3c3b6e" />
-            {/* Stars: 5 rows of 6 + 4 rows of 5, alternating */}
-            {Array.from({ length: 9 }).map((_, row) => {
-              const evenRow = row % 2 === 0;
-              const cols = evenRow ? 6 : 5;
-              return Array.from({ length: cols }).map((_, col) => {
-                const sx = evenRow ? 2.8 + col * 4.8 : 5.2 + col * 4.8;
-                const sy = -138.5 + row * 3.8;
-                return <circle key={`${row}-${col}`} cx={sx} cy={sy} r="1.1" fill="#fff" />;
-              });
-            })}
-          </g>
-          {/* Pole cap */}
-          <circle cx="-2" cy="-140" r="3" fill="#c9a227" />
-        </g>
-
-        {/* ── German flag — right pole, tilted right ── */}
-        <g transform="rotate(30)">
-          <rect x="0" y="-140" width="4" height="210" fill="#5a3e12" />
-          <g clipPath="url(#flag-de-clip)">
-            {/* Black top band */}
-            <rect x="-76" y="-140" width="80" height="22" fill="#1a1a1a" />
-            {/* Red middle band */}
-            <rect x="-76" y="-118" width="80" height="22" fill="#cc0000" />
-            {/* Gold bottom band */}
-            <rect x="-76" y="-96" width="80" height="22" fill="#ffce00" />
-          </g>
-          {/* Pole cap */}
-          <circle cx="2" cy="-140" r="3" fill="#c9a227" />
-        </g>
       </g>
 
       {/* ── Sea / ground ── */}
@@ -691,12 +569,19 @@ export function AuthScreen({ onAuth }: AuthScreenProps) {
               background: narrow
                 ? "linear-gradient(to bottom, transparent 60%, #0a0a08 100%)"
                 : "linear-gradient(to right, transparent 70%, #0a0a08 100%)",
-              zIndex: 2,
+              zIndex: 3,
               pointerEvents: "none",
             }}
           />
           <div style={{ position: "absolute", inset: 0, zIndex: 1 }}>
             <HeroScene />
+          </div>
+          <div style={{
+            position: "absolute", inset: 0, zIndex: 2,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            paddingBottom: "15%",
+          }}>
+            <AuthHeroGlobe />
           </div>
 
           {/* "FOR VICTORY" banner text over the hero */}
@@ -707,7 +592,7 @@ export function AuthScreen({ onAuth }: AuthScreenProps) {
                 bottom: 40,
                 left: 0,
                 right: 0,
-                zIndex: 3,
+                zIndex: 4,
                 textAlign: "center",
                 pointerEvents: "none",
               }}
