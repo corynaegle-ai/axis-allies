@@ -29,6 +29,7 @@ export function Game({ net, gameId, state, myPower, authUser, error, notice, las
   const [pickerSource, setPickerSource] = useState<string | null>(null);
   const [retreatPending, setRetreatPending] = useState<string | null>(null);
   const [confirmingQuit, setConfirmingQuit] = useState(false);
+  const [sideOpen, setSideOpen] = useState(true);
   const [now, setNow] = useState(Date.now());
 
   // Tick every 30s so the "saved X minutes ago" label stays fresh.
@@ -187,7 +188,7 @@ export function Game({ net, gameId, state, myPower, authUser, error, notice, las
   }
 
   return (
-    <div className="app">
+    <div className={"app" + (sideOpen ? "" : " side-collapsed")}>
       {/* Quit confirmation overlay */}
       {confirmingQuit && (
         <div className="quit-overlay">
@@ -260,42 +261,58 @@ export function Game({ net, gameId, state, myPower, authUser, error, notice, las
       </div>
 
       <div className="side">
-        <div className="header">
-          <span className="brand">Axis &amp; Allies</span>
-          <span className="save-status">{savedLabel()}</span>
-          <span className="turn">Game {gameId}</span>
-          {authUser && (
-            <span className="profile-chip" title={authUser.email}>
-              {authUser.displayName}
-            </span>
-          )}
-          <button className="btn logout-btn" onClick={onLogout} title="Log out">
-            Log out
-          </button>
-          {!state.winner && (
-            <button
-              className="btn danger quit-btn"
-              title="Forfeit and leave this game"
-              onClick={() => setConfirmingQuit(true)}
-            >
-              Quit
-            </button>
-          )}
-        </div>
-        <Panel
-          state={state}
-          myPower={myPower}
-          selectedTerritory={selected}
-          reachable={reachable}
-          onPurchase={onPurchase}
-          onEndPhase={onEndPhase}
-          onResolveBattle={onResolveBattle}
-          onPlace={onPlace}
-          onRetreat={onRetreatRequest}
-        />
-        <div className="log">
-          {[...state.log].reverse().slice(0, 80).map((l, i) => <div key={i}>{l}</div>)}
-        </div>
+        {/* Collapse toggle — always visible */}
+        <button
+          className="side-toggle"
+          onClick={() => setSideOpen(o => !o)}
+          title={sideOpen ? "Collapse panel" : "Expand panel"}
+        >
+          {sideOpen ? "▶" : "◀"}
+        </button>
+
+        {sideOpen && (
+          <>
+            {/* Compact header */}
+            <div className="side-header">
+              <div className="side-header-left">
+                <span className="side-game-id">#{gameId}</span>
+                <span className="side-save">{savedLabel()}</span>
+              </div>
+              <div className="side-header-right">
+                {authUser && (
+                  <span className="side-user" title={authUser.email}>
+                    {authUser.displayName}
+                  </span>
+                )}
+                <button className="side-icon-btn" onClick={onLogout} title="Log out">⏏</button>
+                {!state.winner && (
+                  <button
+                    className="side-icon-btn danger"
+                    title="Forfeit and leave this game"
+                    onClick={() => setConfirmingQuit(true)}
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <Panel
+              state={state}
+              myPower={myPower}
+              selectedTerritory={selected}
+              reachable={reachable}
+              onPurchase={onPurchase}
+              onEndPhase={onEndPhase}
+              onResolveBattle={onResolveBattle}
+              onPlace={onPlace}
+              onRetreat={onRetreatRequest}
+            />
+            <div className="log">
+              {[...state.log].reverse().slice(0, 80).map((l, i) => <div key={i}>{l}</div>)}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
