@@ -27,6 +27,7 @@ interface PanelProps {
   state: GameState;
   myPower: PowerId | null;
   selectedTerritory: string | null;
+  reachable: Set<string>;
   onPurchase: (orders: { unit: UnitId; qty: number }[]) => void;
   onEndPhase: () => void;
   onResolveBattle: (territory: string, opts: { retreat?: boolean; retreatTo?: string }) => void;
@@ -53,7 +54,7 @@ const PHASE_SUB: Record<string, string> = {
 };
 
 export function Panel({
-  state, myPower, selectedTerritory,
+  state, myPower, selectedTerritory, reachable,
   onPurchase, onEndPhase, onResolveBattle, onPlace, onRetreat,
 }: PanelProps): JSX.Element {
   const active = state.activePower;
@@ -137,7 +138,7 @@ export function Panel({
         <PlaceBox
           state={state}
           power={active}
-          selectedTerritory={selectedTerritory}
+          reachable={reachable}
           onPlace={onPlace}
         />
       )}
@@ -347,53 +348,83 @@ function StatBlock({ label, value, subtle }: { label: string; value: number; sub
 /* =================================================================== */
 
 function PlaceBox({
-  state, power, selectedTerritory, onPlace,
+  state, power, reachable, onPlace,
 }: {
-  state: GameState; power: PowerId; selectedTerritory: string | null;
+  state: GameState; power: PowerId; reachable: Set<string>;
   onPlace: (u: UnitId, t: string) => void;
 }) {
   const pool = state.powers[power].producedThisTurn;
-  const target = selectedTerritory ? TERRITORY_MAP[selectedTerritory] : null;
   const pp = POWERS[power];
   const remainingTotal = pool.reduce((s, o) => s + o.qty, 0);
+
+  const landTargets = [...reachable]
+    .filter(tid => TERRITORY_MAP[tid]?.terrain === "land")
+    .map(tid => ({ id: tid, name: TERRITORY_MAP[tid]!.name }));
+
+  const seaTargets = [...reachable]
+    .filter(tid => TERRITORY_MAP[tid]?.terrain === "sea")
+    .map(tid => ({ id: tid, name: TERRITORY_MAP[tid]!.name }));
+
+  function targetsFor(unit: UnitId) {
+    return UNITS[unit].domain === "sea" ? seaTargets : landTargets;
+  }
+
+  if (pool.length === 0) {
+    return (
+      <section className="mj-section mj-mobilize">
+        <header className="mj-h3"><span>Mobilization</span></header>
+        <div className="mj-empty">All units deployed — end phase to continue.</div>
+      </section>
+    );
+  }
 
   return (
     <section className="mj-section mj-mobilize">
       <header className="mj-h3">
         <span>Mobilization</span>
-        <span className="mj-h3-sub">{remainingTotal} unit{remainingTotal === 1 ? "" : "s"} staged</span>
+        <span className="mj-h3-sub">{remainingTotal} unit{remainingTotal === 1 ? "" : "s"} to place</span>
       </header>
 
-      <div className="mj-mobilize-target">
-        <span className="mj-mobilize-target-label">DEPLOY TO</span>
-        <span className="mj-mobilize-target-name">
-          {target ? target.name : "— select a territory on the map —"}
-        </span>
-      </div>
-
-      {pool.length === 0 ? (
-        <div className="mj-empty">No units in production this cycle.</div>
-      ) : (
-        <div className="mj-mobilize-list">
-          {pool.map((o, i) => (
+      <div className="mj-mobilize-list">
+        {pool.map((o, i) => {
+          const targets = targetsFor(o.unit);
+          return (
             <div key={i} className="mj-mobilize-row">
               <div className="mj-mobilize-piece">
                 <Piece unit={o.unit} fill={pp.color} accent={pp.accent} size={24} />
               </div>
-              <div className="mj-mobilize-name">{UNITS[o.unit].name}</div>
-              <div className="mj-mobilize-qty">×{o.qty}</div>
-              <button
-                className="mj-btn mj-btn-ghost"
-                disabled={!selectedTerritory}
-                onClick={() => selectedTerritory && onPlace(o.unit, selectedTerritory)}
-                title={selectedTerritory ? `Deploy 1 ${UNITS[o.unit].name} to ${target?.name ?? selectedTerritory}` : "Select a territory first"}
-              >
-                DEPLOY 1
-              </button>
+              <div className="mj-mobilize-info">
+                <div className="mj-mobilize-name">
+                  {UNITS[o.unit].name}
+                  <span className="mj-mobilize-qty"> ×{o.qty}</span>
+                </div>
+                {targets.length === 0 ? (
+                  <div className="mj-mobilize-no-target">No valid territory — check factories</div>
+                ) : targets.length === 1 ? (
+                  <button
+                    className="mj-btn mj-btn-primary mj-btn-deploy"
+                    onClick={() => onPlace(o.unit, targets[0].id)}
+                  >
+                    Deploy to {targets[0].name}
+                  </button>
+                ) : (
+                  <div className="mj-deploy-targets">
+                    {targets.map(t => (
+                      <button
+                        key={t.id}
+                        className="mj-btn mj-btn-ghost mj-btn-deploy-sm"
+                        onClick={() => onPlace(o.unit, t.id)}
+                      >
+                        → {t.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-          ))}
-        </div>
-      )}
+          );
+        })}
+      </div>
     </section>
   );
 }

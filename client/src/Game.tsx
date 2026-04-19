@@ -286,6 +286,7 @@ export function Game({ net, gameId, state, myPower, authUser, error, notice, las
           state={state}
           myPower={myPower}
           selectedTerritory={selected}
+          reachable={reachable}
           onPurchase={onPurchase}
           onEndPhase={onEndPhase}
           onResolveBattle={onResolveBattle}
