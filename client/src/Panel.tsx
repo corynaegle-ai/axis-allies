@@ -131,6 +131,7 @@ export function Panel({
           powerColor={activePower.color}
           powerAccent={activePower.accent}
           onSubmit={onPurchase}
+          onEndPhase={onEndPhase}
         />
       )}
 
@@ -196,12 +197,13 @@ export function Panel({
 /* =================================================================== */
 
 function PurchaseBox({
-  treasury, powerColor, powerAccent, onSubmit,
+  treasury, powerColor, powerAccent, onSubmit, onEndPhase,
 }: {
   treasury: number;
   powerColor: string;
   powerAccent: string;
   onSubmit: (o: { unit: UnitId; qty: number }[]) => void;
+  onEndPhase: () => void;
 }) {
   const [qty, setQty] = useState<Record<UnitId, number>>({} as Record<UnitId, number>);
   const [collapsed, setCollapsed] = useState(false);
@@ -312,17 +314,18 @@ function PurchaseBox({
 
       <button
         className="mj-cta mj-cta-confirm"
-        disabled={over || total === 0}
+        disabled={over}
         onClick={() => {
           const orders = (Object.entries(qty) as [UnitId, number][])
             .filter(([, q]) => q > 0)
             .map(([unit, qty]) => ({ unit, qty }));
           onSubmit(orders);
           setQty({} as Record<UnitId, number>);
+          onEndPhase();
         }}
       >
         <span className="mj-cta-label">
-          {over ? "INSUFFICIENT TREASURY" : total === 0 ? "NOTHING REQUISITIONED" : "CONFIRM REQUISITIONS"}
+          {over ? "INSUFFICIENT TREASURY" : total === 0 ? "SKIP PURCHASE & ADVANCE" : "CONFIRM & ADVANCE"}
         </span>
         <span className="mj-cta-sub">
           {total > 0 && !over ? `Commit ${total} IPC` : over ? `Exceeds treasury by ${Math.abs(remaining)}` : "Pick at least one unit"}
