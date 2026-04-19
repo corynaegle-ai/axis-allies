@@ -18,6 +18,8 @@ export class Lobby {
   rooms = new Map<string, Room>();
   sessions = new Map<string, ClientSession>();
   sockets = new Map<WebSocket, string>(); // socket -> sessionId
+  /** sessionId → set of gameIds that session has quit; excluded from their lobby list */
+  quitSessions = new Map<string, Set<string>>();
 
   ensureSession(sessionId: string | undefined, name: string): ClientSession {
     if (sessionId && this.sessions.has(sessionId)) {
@@ -42,13 +44,22 @@ export class Lobby {
     return room;
   }
 
-  summary(): LobbyGame[] {
-    return [...this.rooms.values()].map((r) => ({
-      id: r.id, name: r.name, started: r.started,
-      players: [...r.players.entries()].map(([sid, p]) => ({
-        sessionId: sid, name: p.name, power: p.power,
-      })),
-    }));
+  summary(forSessionId?: string): LobbyGame[] {
+    const hidden = forSessionId ? (this.quitSessions.get(forSessionId) ?? new Set<string>()) : new Set<string>();
+    return [...this.rooms.values()]
+      .filter((r) => !hidden.has(r.id))
+      .map((r) => ({
+        id: r.id, name: r.name, started: r.started,
+        players: [...r.players.entries()].map(([sid, p]) => ({
+          sessionId: sid, name: p.name, power: p.power,
+        })),
+      }));
+  }
+
+  recordQuit(sessionId: string, gameId: string): void {
+    let s = this.quitSessions.get(sessionId);
+    if (!s) { s = new Set(); this.quitSessions.set(sessionId, s); }
+    s.add(gameId);
   }
 
   joinRoom(room: Room, sessionId: string, name: string, power: PowerId): string | null {
@@ -94,6 +105,7 @@ export class Lobby {
       if (!this.sessions.has(p.sessionId)) {
         this.sessions.set(p.sessionId, { sessionId: p.sessionId, name: p.name, power: p.power });
       }
+      if (p.status === "quit") this.recordQuit(p.sessionId, gameId);
     }
     return room;
   }

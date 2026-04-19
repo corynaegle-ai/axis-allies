@@ -151,8 +151,10 @@ function broadcastRoom(roomId: string, msg: ServerMsg): void {
 }
 
 function broadcastLobby(): void {
-  const msg: ServerMsg = { type: "games", games: lobby.summary() };
-  for (const ws of wss.clients) send(ws as WebSocket, msg);
+  for (const ws of wss.clients) {
+    const sid = lobby.sockets.get(ws as WebSocket);
+    send(ws as WebSocket, { type: "games", games: lobby.summary(sid) });
+  }
 }
 
 /**
@@ -183,11 +185,11 @@ wss.on("connection", (ws) => {
           lobby.sockets.set(ws, session.sessionId);
           upsertPlayer(session);
           send(ws, { type: "welcome", session });
-          send(ws, { type: "games", games: lobby.summary() });
+          send(ws, { type: "games", games: lobby.summary(session.sessionId) });
           return;
         }
         case "listGames": {
-          send(ws, { type: "games", games: lobby.summary() });
+          send(ws, { type: "games", games: lobby.summary(sessionId) });
           return;
         }
         case "createGame": {
@@ -300,6 +302,7 @@ wss.on("connection", (ws) => {
 
           // Mark in DB and update in-memory structures.
           markPlayerQuit(msg.gameId, sessionId);
+          lobby.recordQuit(sessionId, msg.gameId);
           room.quitPowers.add(quittingPower);
           room.players.delete(sessionId);
 
