@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AuthUser, GameState, LobbyGame, PowerId, ServerMsg } from "@aa/shared";
 import { POWERS } from "@aa/shared";
 import { Net } from "./net.js";

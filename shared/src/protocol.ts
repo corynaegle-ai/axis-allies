@@ -5,7 +5,7 @@ import type { GameState, PowerId, PurchaseOrder, ClientSession } from "./types.j
 export type ClientMsg =
   | { type: "hello"; name: string; sessionId?: string }
   | { type: "listGames" }
-  | { type: "createGame"; name: string }
+  | { type: "createGame"; name: string; power: PowerId }
   | { type: "joinGame"; gameId: string; power: PowerId }
   | { type: "leaveGame"; gameId: string }
   | { type: "startGame"; gameId: string }
@@ -17,7 +17,8 @@ export type ClientMsg =
   | { type: "chat"; gameId: string; text: string }
   | { type: "quitGame"; gameId: string }
   | { type: "rejoinGame"; gameId: string }
-  | { type: "abandonGame"; gameId: string };
+  | { type: "abandonGame"; gameId: string }
+  | { type: "lookupGame"; gameId: string };
 
 export interface LobbyGame {
   id: string;
@@ -33,4 +34,5 @@ export type ServerMsg =
   | { type: "chat"; from: string; text: string; gameId: string }
   | { type: "error"; message: string }
   | { type: "info"; message: string }
-  | { type: "playerQuit"; gameId: string; power: PowerId; playerName: string };
+  | { type: "playerQuit"; gameId: string; power: PowerId; playerName: string }
+  | { type: "gameFound"; game: LobbyGame };

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import type { LobbyGame, PowerId } from "@aa/shared";
 import { POWERS, POWER_ORDER } from "@aa/shared";
 import { Net } from "./net.js";
@@ -95,8 +95,11 @@ export function Lobby({
   onLogout: () => void;
   setName: (s: string) => void;
 }) {
-  const [newGame, setNewGame] = useState("Showdown");
-  const [selectedPower, setSelectedPower] = useState<PowerId>("russia");
+  const [newGameName, setNewGameName] = useState("Showdown");
+  const [createPower, setCreatePower] = useState<PowerId>("russia");
+  const [joinCode, setJoinCode] = useState("");
+  const [joinPower, setJoinPower] = useState<PowerId>("russia");
+  const [foundGame, setFoundGame] = useState<LobbyGame | null>(null);
 
   return (
     <div className="lobby-page">
@@ -169,13 +172,23 @@ export function Lobby({
             <input
               type="text"
               className="lobby-input"
-              value={newGame}
-              onChange={(e) => setNewGame(e.target.value)}
+              value={newGameName}
+              onChange={(e) => setNewGameName(e.target.value)}
               placeholder="Campaign name"
             />
+            <select
+              className="lobby-select"
+              value={createPower}
+              onChange={(e) => setCreatePower(e.target.value as PowerId)}
+              aria-label="Your power"
+            >
+              {POWER_ORDER.map((p) => (
+                <option key={p} value={p}>{POWERS[p].name}</option>
+              ))}
+            </select>
             <button
               className="lobby-btn primary"
-              onClick={() => net.send({ type: "createGame", name: newGame })}
+              onClick={() => net.send({ type: "createGame", name: newGameName, power: createPower })}
             >
               Create
             </button>
@@ -245,8 +258,8 @@ export function Lobby({
                       <>
                         <select
                           className="lobby-select"
-                          value={selectedPower}
-                          onChange={(e) => setSelectedPower(e.target.value as PowerId)}
+                          value={joinPower}
+                          onChange={(e) => setJoinPower(e.target.value as PowerId)}
                           aria-label="Choose power"
                         >
                           {POWER_ORDER.map((p) => (
@@ -257,7 +270,7 @@ export function Lobby({
                         </select>
                         <button
                           className="lobby-btn"
-                          onClick={() => net.send({ type: "joinGame", gameId: g.id, power: selectedPower })}
+                          onClick={() => net.send({ type: "joinGame", gameId: g.id, power: joinPower })}
                         >
                           Join
                         </button>

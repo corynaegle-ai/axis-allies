@@ -47,13 +47,30 @@ export class Lobby {
   summary(forSessionId?: string): LobbyGame[] {
     const hidden = forSessionId ? (this.quitSessions.get(forSessionId) ?? new Set<string>()) : new Set<string>();
     return [...this.rooms.values()]
-      .filter((r) => !hidden.has(r.id))
+      .filter((r) => {
+        if (hidden.has(r.id)) return false;
+        // Only show games this user is actually a player in
+        if (forSessionId && !r.players.has(forSessionId)) return false;
+        return true;
+      })
       .map((r) => ({
         id: r.id, name: r.name, started: r.started,
         players: [...r.players.entries()].map(([sid, p]) => ({
           sessionId: sid, name: p.name, power: p.power,
         })),
       }));
+  }
+
+  /** Look up a single room by ID for the "join by code" flow. Returns null if not found. */
+  lookupRoom(gameId: string): LobbyGame | null {
+    const r = this.rooms.get(gameId.toUpperCase());
+    if (!r) return null;
+    return {
+      id: r.id, name: r.name, started: r.started,
+      players: [...r.players.entries()].map(([sid, p]) => ({
+        sessionId: sid, name: p.name, power: p.power,
+      })),
+    };
   }
 
   recordQuit(sessionId: string, gameId: string): void {

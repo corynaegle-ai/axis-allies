@@ -196,9 +196,13 @@ wss.on("connection", (ws) => {
           if (!sessionId) return send(ws, { type: "error", message: "No session." });
           const room = lobby.createRoom(msg.name || "Game");
           createGameRecord(room.id, room.name);
+          // Auto-join creator with their chosen power so the game appears in their list
+          const session = lobby.sessions.get(sessionId)!;
+          const joinErr = lobby.joinRoom(room, sessionId, session.name, msg.power);
+          if (!joinErr) addGamePlayer(room.id, sessionId, msg.power);
           room.sockets.add(ws);
           broadcastLobby();
-          send(ws, { type: "info", message: `Created ${room.id}` });
+          send(ws, { type: "info", message: `Created game #${room.id} — share this code with friends` });
           return;
         }
         case "joinGame": {
@@ -334,6 +338,12 @@ wss.on("connection", (ws) => {
           });
           broadcastRoom(room.id, { type: "gameState", state: room.state });
           broadcastLobby();
+          return;
+        }
+        case "lookupGame": {
+          const found = lobby.lookupRoom(msg.gameId);
+          if (!found) return send(ws, { type: "error", message: `Game #${msg.gameId.toUpperCase()} not found.` });
+          send(ws, { type: "gameFound", game: found });
           return;
         }
         case "rejoinGame": {

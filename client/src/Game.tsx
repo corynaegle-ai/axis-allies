@@ -49,6 +49,7 @@ export function Game({ net, gameId, state, myPower, authUser, error, notice, las
         const d = UNITS[o.unit]?.domain;
         return d === "land" || d === "air";
       });
+      const hasFactoryUnit = pool.some((o) => o.unit === "factory");
 
       const out = new Set<string>();
 
@@ -58,6 +59,13 @@ export function Game({ net, gameId, state, myPower, authUser, error, notice, las
         .map((u) => u.territory);
 
       if (hasLand) {
+        if (hasFactoryUnit) {
+          // Factories can be placed in any owned land territory (no existing factory needed)
+          for (const [tid, ts] of Object.entries(state.territories)) {
+            if (ts.owner === myPower && TERRITORY_MAP[tid]?.terrain === "land") out.add(tid);
+          }
+        }
+        // Other land/air units require a factory
         for (const tid of factoryTerritories) {
           if (state.territories[tid]?.owner === myPower) out.add(tid);
         }
@@ -85,8 +93,18 @@ export function Game({ net, gameId, state, myPower, authUser, error, notice, las
     if (maxMove === 0) return new Set();
 
     const domains = new Set(moveUnits.map((id) => UNITS[state.units[id]?.unit ?? "infantry"].domain));
-    const allLand = [...domains].every((d) => d === "land");
-    const allSea = [...domains].every((d) => d === "sea");
+    const allLand = domains.size > 0 && [...domains].every((d) => d === "land");
+    const allSea = domains.size > 0 && [...domains].every((d) => d === "sea");
+
+    // For combat move, only highlight valid attack destinations (enemy territory/units)
+    const isCombatMove = state.phase === "combatMove" && myPower != null;
+    const isEnemyTerritory = (tid: string): boolean => {
+      const tOwner = state.territories[tid]?.owner;
+      const hasEnemyUnits = Object.values(state.units).some(
+        (u) => u.territory === tid && POWERS[u.owner].alliance !== POWERS[myPower!].alliance,
+      );
+      return hasEnemyUnits || (tOwner != null && POWERS[tOwner].alliance !== POWERS[myPower!].alliance);
+    };
 
     const out = new Set<string>();
     const q: [string, number][] = [[moveSrc, 0]];
@@ -100,7 +118,8 @@ export function Game({ net, gameId, state, myPower, authUser, error, notice, las
         if (allLand && nTerrain !== "land") continue;
         if (allSea && nTerrain !== "sea") continue;
         seen.add(n);
-        out.add(n);
+        // During combat move, only add enemy destinations; still traverse all to find paths
+        if (!isCombatMove || isEnemyTerritory(n)) out.add(n);
         q.push([n, d + 1]);
       }
     }
@@ -141,7 +160,11 @@ export function Game({ net, gameId, state, myPower, authUser, error, notice, las
         }
       } else {
         if (id === moveSrc) { setMoveSrc(null); setMoveUnits([]); return; }
-        const path = bfsPath(moveSrc, id);
+        const unitDomains = new Set(moveUnits.map((uid) => UNITS[state.units[uid]?.unit ?? "infantry"].domain));
+        const pathTerrain = unitDomains.size > 0 && [...unitDomains].every((d) => d === "land") ? "land" as const
+          : unitDomains.size > 0 && [...unitDomains].every((d) => d === "sea") ? "sea" as const
+          : undefined;
+        const path = bfsPath(moveSrc, id, pathTerrain);
         if (!path || moveUnits.length === 0) return;
         net.send({
           type: "moveOrder",
@@ -320,8 +343,8 @@ export function Game({ net, gameId, state, myPower, authUser, error, notice, las
   );
 }
 
-/** Simple BFS through the territory graph (no domain constraint — sufficient for display). */
-function bfsPath(from: string, to: string): string[] | null {
+/** BFS through the territory graph with optional terrain constraint. */
+function bfsPath(from: string, to: string, terrain?: "land" | "sea"): string[] | null {
   const prev: Record<string, string | null> = { [from]: null };
   const q = [from];
   while (q.length) {
@@ -334,6 +357,8 @@ function bfsPath(from: string, to: string): string[] | null {
     }
     for (const n of TERRITORY_MAP[id]?.neighbors ?? []) {
       if (n in prev) continue;
+      if (terrain === "land" && TERRITORY_MAP[n]?.terrain !== "land") continue;
+      if (terrain === "sea" && TERRITORY_MAP[n]?.terrain !== "sea") continue;
       prev[n] = id;
       q.push(n);
     }
