@@ -24,21 +24,16 @@ button { font: inherit; cursor: pointer; }
 .board-wrap { position: relative; background: radial-gradient(ellipse at center, #13283b 0%, #08121d 80%); overflow: hidden; }
 .side { border-left: 1px solid var(--panel-border); background: var(--panel); display: flex; flex-direction: column; overflow: hidden; position: relative; }
 
-/* Collapse toggle — fixed tab on the left edge of the side panel */
+/* Collapse toggle — inline in the header row */
 .side-toggle {
-  position: absolute;
-  top: 50%;
-  left: 0;
-  transform: translateY(-50%);
-  z-index: 10;
-  width: 32px;
-  height: 48px;
-  background: #1d2531;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  background: transparent;
   border: 1px solid var(--panel-border);
-  border-right: none;
-  border-radius: 6px 0 0 6px;
+  border-radius: 4px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 10px;
   cursor: pointer;
   display: flex;
   align-items: center;

@@ -261,19 +261,17 @@ export function Game({ net, gameId, state, myPower, authUser, error, notice, las
       </div>
 
       <div className="side">
-        {/* Collapse toggle — always visible */}
-        <button
-          className="side-toggle"
-          onClick={() => setSideOpen(o => !o)}
-          title={sideOpen ? "Collapse panel" : "Expand panel"}
-        >
-          {sideOpen ? "▶" : "◀"}
-        </button>
-
-        {sideOpen && (
-          <>
-            {/* Compact header */}
-            <div className="side-header">
+        {/* Header always visible — toggle lives here so it never floats over the map */}
+        <div className="side-header">
+          <button
+            className="side-toggle"
+            onClick={() => setSideOpen(o => !o)}
+            title={sideOpen ? "Collapse panel" : "Expand panel"}
+          >
+            {sideOpen ? "▶" : "◀"}
+          </button>
+          {sideOpen && (
+            <>
               <div className="side-header-left">
                 <span className="side-game-id">#{gameId}</span>
                 <span className="side-save">{savedLabel()}</span>
@@ -295,8 +293,12 @@ export function Game({ net, gameId, state, myPower, authUser, error, notice, las
                   </button>
                 )}
               </div>
-            </div>
+            </>
+          )}
+        </div>
 
+        {sideOpen && (
+          <>
             <Panel
               state={state}
               myPower={myPower}
