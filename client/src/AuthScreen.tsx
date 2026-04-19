@@ -221,14 +221,8 @@ function HeroScene() {
         {/* Ocean sphere */}
         <circle r="112" fill="url(#auth-globe)" />
 
-        {/* Latitude / longitude grid — subtle blue */}
+        {/* Longitude grid — longitude meridian ellipses only (no straight latitude lines) */}
         <g fill="none" stroke="#4a8aaa" strokeWidth="0.55" opacity="0.28" clipPath="url(#auth-globe-clip)">
-          {/* Latitude lines at 30°S, equator, 30°N, 60°N */}
-          <line x1="-112" y1="56" x2="112" y2="56" />
-          <line x1="-112" y1="0" x2="112" y2="0" />
-          <line x1="-112" y1="-56" x2="112" y2="-56" />
-          <line x1="-112" y1="-97" x2="112" y2="-97" />
-          {/* Longitude ellipses */}
           <ellipse rx="56" ry="112" />
           <ellipse rx="97" ry="112" />
           <ellipse rx="112" ry="112" />
