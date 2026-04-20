@@ -321,7 +321,7 @@ export function Game({ net, gameId, state, myPower, authUser, error, notice, las
         </div>
 
         {sideOpen && (
-          <>
+          <div className="side-body">
             <Panel
               state={state}
               myPower={myPower}
@@ -336,7 +336,7 @@ export function Game({ net, gameId, state, myPower, authUser, error, notice, las
             <div className="log">
               {[...state.log].reverse().slice(0, 80).map((l, i) => <div key={i}>{l}</div>)}
             </div>
-          </>
+          </div>
         )}
       </div>
     </div>

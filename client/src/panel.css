@@ -35,7 +35,7 @@
   color: var(--mj-ink);
   border-bottom: 1px solid var(--mj-steel-dark);
   flex: 0 0 auto;
-  overflow-y: auto;
+  overflow-y: visible;
   font-feature-settings: "tnum" 1, "lnum" 1;
   font-variant-numeric: tabular-nums lining-nums;
 }
